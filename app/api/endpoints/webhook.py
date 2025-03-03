@@ -217,7 +217,6 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         await handle_build_retries(pr_data, fixed_spec, srcDir, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:
         logger.error(f"初始修复流程失败: {e}")
-        traceback.print_exc()
         comment = settings.fix_error_comment.format(error=str(e))
         git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
 
