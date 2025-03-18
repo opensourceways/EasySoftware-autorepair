@@ -1,6 +1,9 @@
 import os
 from pydantic import Field
 from pydantic_settings import BaseSettings  # 新的导入方式
+from dotenv import load_dotenv
+
+# load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 
 class Settings(BaseSettings):
@@ -12,7 +15,7 @@ class Settings(BaseSettings):
     euler_password: str = Field(..., env="EULER_PASSWORD")
 
     class Config:
-        env_file = ".env"
+        env_file_encoding = "utf-8"
         extra = "ignore"
 
 
