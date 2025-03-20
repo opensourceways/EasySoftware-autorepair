@@ -101,6 +101,3 @@ def get_token():
     cookie = get_cookie(version)
     auth_url = get_auth_url(cookie)
     return get_oauth_token(auth_url)
-
-
-print(get_cookie(get_privacy_version()))

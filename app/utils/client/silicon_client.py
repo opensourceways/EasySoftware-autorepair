@@ -69,4 +69,8 @@ class SiliconFlowChat:
         # 调用API
         response = self.chat(messages=[{"role": "system", "content": system_prompt},
                                        {"role": "user", "content": user_prompt}])
-        return response
+        if "```spec" in response:
+            new_spec = response.split("```spec")[1].split("```")[0].strip()
+            return new_spec
+        else:
+            return response
