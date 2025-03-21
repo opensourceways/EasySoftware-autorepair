@@ -59,7 +59,8 @@ class GiteeForkService(ForkServiceInterface):
         return None
 
     def create_fork(self, owner, repo):
-        self._delete_repo(repo)
+        if self.current_user != owner:
+            self._delete_repo(repo)
 
         # 创建fork
         url = f"{self.base_url}/repos/{owner}/{repo}/forks"
