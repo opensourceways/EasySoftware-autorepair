@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Header, logger
+from fastapi import APIRouter, Request, HTTPException, Header
 from app.config import settings
 from app.utils import fetch_spec, git_api
 from app.utils import fetch_build_log
@@ -8,7 +8,6 @@ import hmac
 import hashlib
 import logging
 
-logger = logging.getLogger("uvicorn.error")
 router = APIRouter()
 
 
@@ -61,7 +60,8 @@ async def start_repair_job(
     commit_url = f"{fork_url}/commit/{sha}"
     # eulermaker上构建
     maker.add_software_package(settings.os_project, repo, "", fork_url)
-    maker.add_build_target(settings.os_project, repo, "openEuler:24.03-LTS-SP1", "x86_64", ["openEuler-master:everything"], True, True)
+    maker.add_build_target(settings.os_project, repo, "openEuler:24.03-LTS-SP1", "x86_64", ["openEuler-master"
+                                                                                            ":everything"], True, True)
     maker.start_build_single(settings.os_project, repo)
     maker_url = (f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/overview?osProject=test-repair"
                  f"&packageName={repo}")
