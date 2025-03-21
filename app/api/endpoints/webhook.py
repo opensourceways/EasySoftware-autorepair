@@ -60,9 +60,9 @@ async def start_repair_job(
     fork_url, sha = git_api.update_spec_file(source_url, result)
     commit_url = f"{fork_url}/commit/{sha}"
     # eulermaker上构建
-    maker.add_software_package("test-repair", repo, "", fork_url)
-    maker.add_build_target("test-repair", repo, "openEuler:24.03-LTS-SP1", "x86_64", ["openEuler-master:everything"], True, True)
-    maker.start_build_single("test-repair", repo)
+    maker.add_software_package(settings.os_project, repo, "", fork_url)
+    maker.add_build_target(settings.os_project, repo, "openEuler:24.03-LTS-SP1", "x86_64", ["openEuler-master:everything"], True, True)
+    maker.start_build_single(settings.os_project, repo)
     maker_url = (f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/overview?osProject=test-repair"
                  f"&packageName={repo}")
 

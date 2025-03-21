@@ -39,28 +39,16 @@ class GiteeForkService(ForkServiceInterface):
             return response.json()["login"]
         raise Exception(f"Failed to get user info: {response.text}")
 
-    def _get_existing_fork(self, owner, repo):
-        """检查是否已存在fork仓库"""
-        page = 1
-        while True:
-            url = f"{self.base_url}/repos/{owner}/{repo}/forks"
-            params = {
-                "access_token": self.token,
-                "page": page,
-                "per_page": 100
-            }
-            response = requests.get(url, params=params)
+    def _delete_repo(self, repo):
+        # 删除同名仓库
+        url = f"{self.base_url}/repos/{self.current_user}/{repo}"
+        headers = {'Authorization': f'token {self.token}'}
 
-            if response.status_code != 200 or not response.json():
-                break
-
-            # 在fork列表中查找当前用户的fork
-            for fork in response.json():
-                if fork["owner"]["login"] == self.current_user:
-                    return fork["html_url"]
-
-            page += 1
-        return None
+        response = requests.delete(url, headers=headers)
+        if response.status_code == 204:
+            print(f"Repository {repo} deleted successfully.")
+        else:
+            raise Exception(f"Failed to delete repository {repo}: {response.json()}")
 
     def get_file_sha(self, owner, repo, file_path, branch="master"):
         url = f"{self.base_url}/repos/{owner}/{repo}/contents/{file_path}"
@@ -71,10 +59,7 @@ class GiteeForkService(ForkServiceInterface):
         return None
 
     def create_fork(self, owner, repo):
-        # 先检查是否已存在fork
-        existing_fork = self._get_existing_fork(owner, repo)
-        if existing_fork:
-            return existing_fork
+        self._delete_repo(repo)
 
         # 创建fork
         url = f"{self.base_url}/repos/{owner}/{repo}/forks"
