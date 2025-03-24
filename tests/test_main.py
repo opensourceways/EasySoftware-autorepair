@@ -15,6 +15,6 @@ def test_webhook_endpoint():
         "event": "test.event",
         "data": {"key": "value"}
     }
-    response = client.post("/api/v1/webhook", json=test_payload)
+    response = client.post("/api/v1/webhooks/spec", json=test_payload)
     assert response.status_code == 200
     assert "Webhook received" in response.json()["message"]
