@@ -18,5 +18,3 @@ async def validate_config(request: Request, call_next):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "env": settings.env}
-
-print(euler_maker_api.get_job_id("test-repair", "perl-GD"))
