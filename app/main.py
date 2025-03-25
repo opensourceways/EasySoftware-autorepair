@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from app.api.endpoints import webhook
 from app.config import settings
+from app.utils import euler_maker_api
 
 app = FastAPI(title="Spec Webhook Service", version="1.0.0")
 
@@ -17,3 +18,5 @@ async def validate_config(request: Request, call_next):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "env": settings.env}
+
+print(euler_maker_api.get_job_id("test-repair", "perl-GD"))

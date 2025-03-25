@@ -5,6 +5,7 @@ from app.config import settings
 import requests
 import logging
 
+from app.utils.client import api_client
 
 logger = logging.getLogger("git_api")
 
@@ -23,37 +24,34 @@ class ForkServiceInterface(ABC):
     def comment_on_pr(self, owner, repo, pr_number, comment):
         pass
 
+    @abstractmethod
+    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        pass
+
 
 # 平台具体实现层
 class GiteeForkService(ForkServiceInterface):
     def __init__(self, token):
-        self.base_url = "https://gitee.com/api/v5"
-        self.token = token
+        self.client = api_client.ApiClient("gitee", token)
         self.current_user = self._get_current_user()
 
     def _get_current_user(self):
         """获取当前认证用户信息"""
-        url = f"{self.base_url}/user"
-        response = requests.get(url, params={"access_token": self.token})
+        response = self.client.get("/user")
         if response.status_code == 200:
             return response.json()["login"]
         raise Exception(f"Failed to get user info: {response.text}")
 
     def _delete_repo(self, repo):
         # 删除同名仓库
-        url = f"{self.base_url}/repos/{self.current_user}/{repo}"
-        headers = {'Authorization': f'token {self.token}'}
-
-        response = requests.delete(url, headers=headers)
+        response = self.client.delete(f"/repos/{self.current_user}/{repo}")
         if response.status_code == 204:
             print(f"Repository {repo} deleted successfully.")
         else:
             raise Exception(f"Failed to delete repository {repo}: {response.json()}")
 
     def get_file_sha(self, owner, repo, file_path, branch="master"):
-        url = f"{self.base_url}/repos/{owner}/{repo}/contents/{file_path}"
-        params = {'access_token': self.token, 'ref': branch}
-        response = requests.get(url, params=params)
+        response = self.client.get(f"/repos/{owner}/{repo}/contents/{file_path}?ref={branch}")
         if response.status_code == 200:
             return response.json().get("sha")
         return None
@@ -63,18 +61,12 @@ class GiteeForkService(ForkServiceInterface):
             self._delete_repo(repo)
 
         # 创建fork
-        url = f"{self.base_url}/repos/{owner}/{repo}/forks"
-        headers = {'Authorization': f'token {self.token}'}
-
-        response = requests.post(url, headers=headers)
+        response = self.client.post(f"/repos/{owner}/{repo}/forks")
         if response.status_code == 201:
             return response.json()["html_url"]
         raise Exception(f"Gitee fork failed: {response.json()}")
 
     def submit_spec_file(self, fork_owner, fork_repo, content, file_path, branch="master"):
-        url = f"{self.base_url}/repos/{fork_owner}/{fork_repo}/contents/{file_path}"
-        params = {'access_token': self.token}
-
         # 获取 SHA 值
         sha = self.get_file_sha(fork_owner, fork_repo, file_path, branch)
 
@@ -84,62 +76,59 @@ class GiteeForkService(ForkServiceInterface):
             "branch": branch,
             "sha": sha
         }
-        response = requests.put(url, params=params, json=data)
-        logger.info(response.json())
+        response = self.client.put(f"/repos/{fork_owner}/{fork_repo}/contents/{file_path}", data)
         if response.status_code == 200:
             return response.json()["content"]["path"], response.json()["commit"]["sha"]
         raise Exception(f"Gitee提交失败: {response.status_code} {response.text}")
 
     def comment_on_pr(self, owner, repo, pr_num, comment):
-        api_url = f"https://gitee.com/api/v5/repos/{owner}/{repo}/pulls/{pr_num}/comments"
-        # 这里假设你使用 GitHub API 来评论PR，需要提供有效的 GitHub 令牌（token）
-        headers = {
-            "Authorization": f"Bearer {settings.gitee_token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
         data = {
             "body": comment
         }
-
         try:
             # 评论 PR
-            response = requests.post(api_url, json=data, headers=headers)
+            response = self.client.post(f"/repos/{owner}/{repo}/pulls/{pr_num}/comments", data)
             response.raise_for_status()  # 检查是否成功
         except requests.exceptions.RequestException as e:
             print("评论 PR 失败:", e)
 
+    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        params = {"access_token": token}
+        try:
+            # 获取 PR 文件列表
+            response = self.client.get(f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
+            response.raise_for_status()
+            files = response.json()
+
+            target_file = next((f for f in files if f["filename"] == file_path), None)
+            if not target_file:
+                print(f"文件 {file_path} 未在 PR 中找到")
+                return None
+            raw_response = requests.get(target_file['raw_url'], params=params)
+            raw_response.raise_for_status()
+            return raw_response.text
+        except requests.exceptions.RequestException as e:
+            print(f"API 请求失败: {e}")
+            return None
+
 
 class GitHubForkService(ForkServiceInterface):
     def __init__(self, token):
-        self.base_url = "https://api.github.com"
-        self.token = token
+        self.client = api_client.ApiClient("github", token)
 
     def create_fork(self, owner, repo):
-        url = f"{self.base_url}/repos/{owner}/{repo}/forks"
-        headers = {
-            'Authorization': f'token {self.token}',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-
-        response = requests.post(url, headers=headers)
+        response = self.client.post(f"/repos/{owner}/{repo}/forks")
         if response.status_code == 202:
             return response.json()["clone_url"]
         raise Exception(f"GitHub fork failed: {response.json()}")
 
     def submit_spec_file(self, fork_owner, fork_repo, content, file_path, branch="main"):
-        url = f"{self.base_url}/repos/{fork_owner}/{fork_repo}/contents/{file_path}"
-        headers = {
-            'Authorization': f'token {self.token}',
-            'Accept': 'application/vnd.github.v3+json'
-        }
-
         data = {
             "message": "Add spec file",
             "content": b64encode(content.encode()).decode(),
             "branch": branch
         }
-
-        response = requests.put(url, headers=headers, json=data)
+        response = self.client.put(f"/repos/{fork_owner}/{fork_repo}/contents/{file_path}", data)
         if response.status_code == 201:
             return response.json()["content"]["path"]
         raise Exception(f"GitHub提交失败: {response.status_code} {response.text}")
@@ -147,43 +136,41 @@ class GitHubForkService(ForkServiceInterface):
     def comment_on_pr(self, owner, repo, pr_num, comment):
         pass
 
+    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        pass
+
 
 class GitCodeForkService(ForkServiceInterface):
     def __init__(self, token):
+        self.client = api_client.ApiClient("gitcode", token)
         self.base_url = "https://api.gitcode.com/api/v5"
         self.token = token
 
     def create_fork(self, owner, repo):
-        url = f"{self.base_url}/repos/{owner}/{repo}/forks"
-
-        # 构造请求参数
-        params = {'access_token': self.token}
         # 过滤空值参数
-        response = requests.post(
-            url,
-            params=params,
-            headers={'Content-Type': 'application/json'}
+        response = self.client.post(
+            f"/repos/{owner}/{repo}/forks",
         )
         if response.status_code == 200:
             return f"https://gitcode.com/{response.json()['full_name']}"
         raise Exception(f"GitCode fork失败: {response.status_code} {response.text}")
 
     def submit_spec_file(self, fork_owner, fork_repo, content, file_path, branch="main"):
-        url = f"{self.base_url}/repos/{fork_owner}/{fork_repo}/contents/{file_path}"
-        params = {'access_token': self.token}
-
         data = {
             "content": b64encode(content.encode()).decode(),
             "message": "Add spec file",
             "branch": branch
         }
 
-        response = requests.post(url, params=params, json=data)
+        response = self.client.post(f"/repos/{fork_owner}/{fork_repo}/contents/{file_path}", data)
         if response.status_code == 201:
             return response.json()["path"]
         raise Exception(f"GitCode提交失败: {response.status_code} {response.text}")
 
     def comment_on_pr(self, owner, repo, pr_num, comment):
+        pass
+
+    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
         pass
 
 
@@ -289,3 +276,9 @@ def comment_on_pr(repo_url, pr_num, comment):
         )
     except Exception as e:
         print(f"提交失败: {str(e)}")
+
+
+def get_spec_content(repo_url, pr_number, file_path):
+    platform, token, owner, repo = parse_repo_url(repo_url)
+    service = ForkServiceFactory.get_service(platform, token)
+    return service.get_spec_content(owner, repo, pr_number, file_path, token)
