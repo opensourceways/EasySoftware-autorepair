@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from app.api.endpoints import webhook
 from app.config import settings
 
+
 app = FastAPI(title="Spec Webhook Service", version="1.0.0")
 
 app.include_router(webhook.router, prefix="/api/v1", tags=["webhooks"])

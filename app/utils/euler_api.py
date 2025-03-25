@@ -1,103 +1,211 @@
 import json
+import logging
+from urllib.parse import urlencode, urlparse, parse_qs
+from typing import Optional, Dict
 import requests
+from requests.exceptions import RequestException
+
 from app.config import settings
-from urllib.parse import urlparse, parse_qs
+
+# 配置日志
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
+
+# 常量定义
+ONEID_BASE_URL = "https://id.openeuler.org/oneid"
+OAUTH_REDIRECT_URI = "https://eulermaker.compass-ci.openeuler.openatom.cn/oauth/"
+OAUTH_TOKEN_URL = "https://eulermaker.compass-ci.openeuler.openatom.cn/api/user_auth/oauth_authorize"
 
 
-def get_privacy_version():
-    api_url = "https://id.openeuler.org/oneid/privacy/version"
+class OAuthError(Exception):
+    """自定义OAuth流程异常基类"""
+    pass
+
+
+class APIConnectionError(OAuthError):
+    """API连接异常"""
+    pass
+
+
+class InvalidResponseError(OAuthError):
+    """无效的API响应异常"""
+    pass
+
+
+class MissingParameterError(OAuthError):
+    """缺少必要参数异常"""
+    pass
+
+
+class OAuthClient:
+    def __init__(self, client_id: str, username: str, password: str):
+        self.client_id = client_id
+        self.username = username
+        self.password = password
+        self.session = requests.Session()
+        self.session.headers.update({"Content-Type": "application/json"})
+
+    def _handle_request_exception(self, e: RequestException, context: str = ""):
+        """统一处理请求异常"""
+        error_msg = f"{context}请求失败: {str(e)}"
+        logger.error(error_msg)
+        raise APIConnectionError(error_msg) from e
+
+    def get_privacy_version(self) -> str:
+        """获取隐私协议版本"""
+        url = f"{ONEID_BASE_URL}/privacy/version"
+        try:
+            response = self.session.get(url, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+            if not isinstance(data, dict):
+                raise InvalidResponseError("响应格式异常，预期JSON对象")
+
+            version = data.get("data", {}).get("oneidPrivacyAccepted")
+            if not version:
+                raise InvalidResponseError("响应中缺少隐私协议版本")
+            return str(version)
+
+        except (RequestException, json.JSONDecodeError) as e:
+            self._handle_request_exception(e, "获取隐私协议版本")
+
+    def authenticate(self, version: str) -> None:
+        """进行用户认证并维护会话状态"""
+        url = f"{ONEID_BASE_URL}/login"
+        params = {
+            "client_id": self.client_id,
+            "scope": "openid profile email username",
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "response_mode": "query"
+        }
+
+        payload = {
+            "community": "openeuler",
+            "permission": "sigRead",
+            "account": self.username,
+            "client_id": self.client_id,
+            "accept_term": 1,  # 假设需要接受条款
+            "password": self.password,
+            "oneidPrivacyAccepted": version
+        }
+
+        try:
+            # 清除旧会话状态
+            self.session.cookies.clear()
+
+            response = self.session.post(
+                url,
+                json=payload,
+                headers={"Referer": f"https://id.openeuler.org/login?{urlencode(params)}"},
+                timeout=15
+            )
+            response.raise_for_status()
+
+            # 验证认证令牌
+            if "_U_T_" not in self.session.cookies:
+                raise InvalidResponseError("认证响应中缺少令牌")
+
+        except RequestException as e:
+            self._handle_request_exception(e, "用户认证")
+
+    def base_info(self, version: str) -> None:
+        url = f"{ONEID_BASE_URL}/update/baseInfo"
+        payload = {"oneidPrivacyAccepted": version}
+        cookie = self.session.cookies.get_dict()
+        cookie_list = []
+        for k, v in cookie.items():
+            cookie_list.append(f"{k}={v}")
+        headers = {
+            "Cookie": ";".join(cookie_list),
+            "Token": cookie["_U_T_"],
+        }
+        try:
+            response = self.session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=15
+            )
+            response.raise_for_status()
+        except RequestException as e:
+            self._handle_request_exception(e, "同意协议")
+
+    def get_auth_code(self) -> str:
+        """获取授权码"""
+        url = f"{ONEID_BASE_URL}/oidc/auth"
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid profile email username"
+        }
+        cookie = self.session.cookies.get_dict()
+        cookie_list = []
+        for k, v in cookie.items():
+            cookie_list.append(f"{k}={v}")
+        headers = {
+            "Cookie": ";".join(cookie_list),
+            "Token": cookie["_U_T_"],
+        }
+        try:
+            response = self.session.get(url, headers=headers, params=params, timeout=15)
+            response.raise_for_status()
+
+            data = response.json()
+            auth_url = data.get("body", "")
+            if not auth_url:
+                raise InvalidResponseError("响应中缺少授权URL")
+
+            parsed = urlparse(auth_url)
+            code = parse_qs(parsed.query).get("code", [None])[0]
+
+            if not code:
+                raise MissingParameterError("授权URL中缺少code参数")
+            return code
+
+        except (RequestException, IndexError) as e:
+            self._handle_request_exception(e, "获取授权码")
+
+    def get_access_token(self, code: str) -> str:
+        """使用授权码获取访问令牌"""
+        try:
+            response = self.session.get(
+                f"{OAUTH_TOKEN_URL}?code={code}",
+                timeout=15
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            token = data.get("msg", {}).get("token")
+            if not token:
+                raise InvalidResponseError("响应中缺少访问令牌")
+            return token
+
+        except RequestException as e:
+            self._handle_request_exception(e, "获取访问令牌")
+
+    def execute_flow(self) -> str:
+        """执行完整的OAuth流程"""
+        try:
+            version = self.get_privacy_version()
+            self.authenticate(version)
+            self.base_info(version)
+            auth_code = self.get_auth_code()
+            return self.get_access_token(auth_code)
+        except OAuthError as e:
+            logger.error("OAuth流程失败: %s", str(e))
+            raise
+
+
+# 使用示例
+def get_token() -> Optional[str]:
     try:
-        response = requests.get(
-            api_url,
-            timeout=50
+        client = OAuthClient(
+            client_id=settings.client_id,
+            username=settings.euler_user,
+            password=settings.euler_password
         )
-        response.raise_for_status()
-        data = response.json()
-        return data['data']['oneidPrivacyAccepted']
-    except requests.exceptions.RequestException as e:
-        print("请求失败:", e)
-        return ""
-
-
-def get_cookie(version):
-    api_url = "https://id.openeuler.org/oneid/login"
-    body = {"community": "openeuler", "permission": "sigRead", "account": settings.euler_user,
-            "client_id": settings.client_id, "accept_term": 0,
-            "password": settings.euler_password,
-            "oneidPrivacyAccepted": version}
-    headers = {
-        "Referer": f"https://id.openeuler.org/login?client_id={settings.client_id}&scope=openid%20profile%20email%20username&redirect_uri=https%3A%2F%2Feulermaker.compass-ci.openeuler.openatom.cn%2Foauth%2F&response_mode=query"
-    }
-    try:
-        response = requests.post(
-            api_url,
-            json=body,  # 自动设置headers的Content-Type
-            headers=headers,
-            timeout=50
-        )
-        response.raise_for_status()  # 自动抛出HTTP错误
-        data = response.json()
-        # 获取所有的 Set-Cookie 字段
-        set_cookies = response.cookies.get_dict()
-        return set_cookies
-    except requests.exceptions.RequestException as e:
-        print("请求失败:", e)
-        return ""
-
-
-def get_auth_url(cookie):
-    api_url = f"https://id.openeuler.org/oneid/oidc/auth?client_id={settings.client_id}&redirect_uri=https:%2F%2Feulermaker.compass-ci.openeuler.openatom.cn%2Foauth%2F&response_type=code&scope=openid+profile+email+username"
-    cookie_list = []
-    for k, v in cookie.items():
-        cookie_list.append(f"{k}={v}")
-    headers = {
-        "Cookie": ";".join(cookie_list),
-        "Token": cookie["_U_T_"],
-    }
-    try:
-        response = requests.get(
-            api_url,
-            headers=headers,
-            timeout=50
-        )
-        response.raise_for_status()  # 自动抛出HTTP错误
-        data = response.json()
-        return data['body']
-    except requests.exceptions.RequestException as e:
-        print("请求失败:", e)
-        return ""
-
-
-def get_oauth_token(url):
-    parsed_url = urlparse(url)
-    query_params = parse_qs(parsed_url.query)
-
-    # 提取 'code' 参数的值
-    code = query_params.get('code', [None])[0]
-
-    if code is None:
-        print("URL 中未找到 'code' 参数")
-        return ""
-
-    api_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/api/user_auth/oauth_authorize?code={code}"
-
-    try:
-        response = requests.get(
-            api_url,
-            timeout=50
-        )
-        response.raise_for_status()  # 自动抛出HTTP错误
-        response_data = json.loads(response.text)
-        # 提取 token
-        final_token = response_data.get("msg", {}).get("token")
-        return final_token
-    except requests.exceptions.RequestException as e:
-        print("请求oauth_token失败 :", e)
-        return ""
-
-
-def get_token():
-    version = get_privacy_version()
-    cookie = get_cookie(version)
-    auth_url = get_auth_url(cookie)
-    return get_oauth_token(auth_url)
+        return client.execute_flow()
+    except OAuthError:
+        return None
