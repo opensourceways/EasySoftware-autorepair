@@ -13,7 +13,7 @@ logger = logging.getLogger("git_api")
 # 抽象接口层
 class ForkServiceInterface(ABC):
     @abstractmethod
-    def create_fork(self, owner, repo):
+    def create_fork(self, owner, repo, pr_num):
         pass
 
     @abstractmethod
@@ -42,29 +42,63 @@ class GiteeForkService(ForkServiceInterface):
             return response.json()["login"]
         raise Exception(f"Failed to get user info: {response.text}")
 
-    def _delete_repo(self, repo):
-        # 删除同名仓库
-        response = self.client.delete(f"/repos/{self.current_user}/{repo}")
-        if response.status_code == 204:
-            print(f"Repository {repo} deleted successfully.")
-        else:
-            raise Exception(f"Failed to delete repository {repo}: {response.json()}")
+    def _check_repo_exists(self, repo):
+        """检查当前用户是否有指定仓库"""
+        response = self.client.get(f"/repos/{self.current_user}/{repo}")
+        return response.status_code == 200
+
+    def _get_default_branch(self, repo):
+        """获取仓库的默认分支名称"""
+        response = self.client.get(f"/repos/{self.current_user}/{repo}")
+        if response.status_code == 200:
+            return response.json().get("default_branch", "master")
+        return "master"
+
+    def _get_branch_sha(self, repo, branch):
+        """获取指定分支的SHA"""
+        response = self.client.get(f"/repos/{self.current_user}/{repo}/branches/{branch}")
+        if response.status_code == 200:
+            return response.json()["commit"]["sha"]
+        return None
+
+    def _create_branch(self, repo, branch_name, base_sha):
+        """创建新分支"""
+        data = {
+            "branch_name": branch_name,
+            "ref": base_sha
+        }
+        response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", json=data)
+        if response.status_code != 201:
+            raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
+        print(f"Branch {branch_name} created successfully in {self.current_user}/{repo}.")
+
+    def create_fork(self, owner, repo, pr_num):
+        # 检查当前用户是否已有仓库
+        if not self._check_repo_exists(repo):
+            # 创建fork
+            response = self.client.post(f"/repos/{owner}/{repo}/forks")
+            if response.status_code != 201:
+                raise Exception(f"Gitee fork failed: {response.json()}")
+            print(f"Forked repository {self.current_user}/{repo} created.")
+
+        # 获取默认分支名称
+        default_branch = self._get_default_branch(repo)
+        # 获取基础分支的SHA
+        sha = self._get_branch_sha(repo, default_branch)
+        if not sha:
+            raise Exception(f"Failed to get SHA for branch {default_branch} in repository {repo}")
+
+        # 创建新分支
+        self._create_branch(repo, pr_num, sha)
+
+        # 返回新分支的URL
+        return f"https://gitee.com/{self.current_user}/{repo}/tree/{pr_num}/"
 
     def get_file_sha(self, owner, repo, file_path, branch="master"):
         response = self.client.get(f"/repos/{owner}/{repo}/contents/{file_path}?ref={branch}")
         if response.status_code == 200:
             return response.json().get("sha")
         return None
-
-    def create_fork(self, owner, repo):
-        if self.current_user != owner:
-            self._delete_repo(repo)
-
-        # 创建fork
-        response = self.client.post(f"/repos/{owner}/{repo}/forks")
-        if response.status_code == 201:
-            return response.json()["html_url"]
-        raise Exception(f"Gitee fork failed: {response.json()}")
 
     def submit_spec_file(self, fork_owner, fork_repo, content, file_path, branch="master"):
         # 获取 SHA 值
@@ -116,7 +150,7 @@ class GitHubForkService(ForkServiceInterface):
     def __init__(self, token):
         self.client = api_client.ApiClient("github", token)
 
-    def create_fork(self, owner, repo):
+    def create_fork(self, owner, repo, pr_num):
         response = self.client.post(f"/repos/{owner}/{repo}/forks")
         if response.status_code == 202:
             return response.json()["clone_url"]
@@ -146,7 +180,7 @@ class GitCodeForkService(ForkServiceInterface):
         self.base_url = "https://api.gitcode.com/api/v5"
         self.token = token
 
-    def create_fork(self, owner, repo):
+    def create_fork(self, owner, repo, pr_num):
         # 过滤空值参数
         response = self.client.post(
             f"/repos/{owner}/{repo}/forks",
@@ -240,9 +274,10 @@ def parse_clone_url(clone_url: str) -> tuple:
     return owner, repo
 
 
-def update_spec_file(repo_url, file_content):
+def update_spec_file(repo_url, file_content, pr_num):
     """
     更新指定仓库的.spec文件
+    :param pr_num: pr编号
     :param repo_url: 仓库URL
     :param file_content: 文件内容
     """
@@ -256,7 +291,8 @@ def update_spec_file(repo_url, file_content):
             fork_owner=fork_owner,
             fork_repo=repo,  # 假设仓库名不变
             content=file_content,
-            file_path=file_path
+            file_path=file_path,
+            branch=f'{pr_num}',
         )
         print(f"文件已提交至: {file_path}")
         return clone_url, sha
