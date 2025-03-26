@@ -35,3 +35,6 @@ venv.bak/
 
 # Logs
 *.log
+
+# config
+conf.yaml
