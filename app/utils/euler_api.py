@@ -109,6 +109,28 @@ class OAuthClient:
         except RequestException as e:
             self._handle_request_exception(e, "用户认证")
 
+    def base_info(self, version: str) -> None:
+        url = f"{ONEID_BASE_URL}/update/baseInfo"
+        payload = {"oneidPrivacyAccepted": version}
+        cookie = self.session.cookies.get_dict()
+        cookie_list = []
+        for k, v in cookie.items():
+            cookie_list.append(f"{k}={v}")
+        headers = {
+            "Cookie": ";".join(cookie_list),
+            "Token": cookie["_U_T_"],
+        }
+        try:
+            response = self.session.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=15
+            )
+            response.raise_for_status()
+        except RequestException as e:
+            self._handle_request_exception(e, "同意协议")
+
     def get_auth_code(self) -> str:
         """获取授权码"""
         url = f"{ONEID_BASE_URL}/oidc/auth"
@@ -168,6 +190,7 @@ class OAuthClient:
         try:
             version = self.get_privacy_version()
             self.authenticate(version)
+            self.baseinfo(version)
             auth_code = self.get_auth_code()
             return self.get_access_token(auth_code)
         except OAuthError as e:

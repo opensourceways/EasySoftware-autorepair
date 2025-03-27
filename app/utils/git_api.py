@@ -67,7 +67,7 @@ class GiteeForkService(ForkServiceInterface):
             "branch_name": branch_name,
             "ref": base_sha
         }
-        response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", json=data)
+        response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", data=data)
         if response.status_code != 201:
             raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
         print(f"Branch {branch_name} created successfully in {self.current_user}/{repo}.")
@@ -283,7 +283,7 @@ def update_spec_file(repo_url, file_content, pr_num):
     """
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
-    clone_url = service.create_fork(owner, repo)
+    clone_url = service.create_fork(owner, repo, pr_num)
     fork_owner, fork_repo = parse_clone_url(clone_url)
     file_path = f'{fork_repo}.spec'
     try:
