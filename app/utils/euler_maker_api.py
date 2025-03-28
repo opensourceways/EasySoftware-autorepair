@@ -1,12 +1,14 @@
+import asyncio
+import logging
 import time
-from typing import Any, Dict, List, Optional, Union
+import httpx
 import requests
+from typing import Any, Dict, List, Optional
 from requests.exceptions import RequestException
-
-# 假设这是来自.euler_api模块的正确导入
 from . import euler_api
 
 # 常量定义
+logger = logging.getLogger(__name__)
 BASE_API_URL = "https://eulermaker.compass-ci.openeuler.openatom.cn/api/api/os"
 BASE_DATA_API_URL = "https://eulermaker.compass-ci.openeuler.openatom.cn/api/data-api"
 REQUEST_TIMEOUT = 50
@@ -235,7 +237,7 @@ def get_log_url(result_root: str) -> str:
     return f"https://eulermaker.compass-ci.openseuler.openatom.cn/{result_root}/dmesg"
 
 
-def get_build_log(url: str, lines: int = 500) -> Optional[str]:
+def get_build_log(url: str, lines: int = 200) -> Optional[str]:
     """获取指定行数的构建日志"""
     try:
         with requests.get(url, stream=True, timeout=REQUEST_TIMEOUT) as response:
@@ -252,3 +254,40 @@ def get_build_log(url: str, lines: int = 500) -> Optional[str]:
     except RequestException as e:
         print(f"获取日志失败: {e}")
         return None
+
+
+async def get_build_status(
+        build_id: str,
+        max_retries: int = 10,
+        base_delay: float = 30.0
+) -> Optional[Dict]:
+    """异步优化版本"""
+    api_url = "https://eulermaker.compass-ci.openseuler.openagent.cn/api/data-api/search"
+    query_body = {
+        "index": "builds",
+        "query": {
+            "size": 1,
+            "_source": ["build_id", "status", "progress"],
+            "query": {"term": {"build_id": build_id}}
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = await client.post(api_url, json=query_body, timeout=50)
+                response.raise_for_status()
+                data = response.json()
+
+                if data.get('hits', {}).get('hits'):
+                    return data['hits']['hits'][0]['_source']
+
+                logger.warning(f"Empty response, attempt {attempt}/{max_retries}")
+                await asyncio.sleep(base_delay * attempt)
+
+            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+                logger.error(f"Request failed: {str(e)}")
+                if attempt == max_retries:
+                    break
+                await asyncio.sleep(base_delay * (attempt ** 2))
+    return None

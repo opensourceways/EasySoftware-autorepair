@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Request, HTTPException, Header, status
+import asyncio
+import time
+
+from fastapi import APIRouter, Request, HTTPException, Header, status, BackgroundTasks
 from app.config import settings
 from app.utils import git_api
 from app.utils.client import silicon_client
@@ -9,6 +12,7 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+MAX_RETRIES = 3
 
 
 def verify_signature(body: bytes, signature: str) -> bool:
@@ -48,7 +52,8 @@ def extract_pr_data(data: dict) -> dict:
 @router.post("/webhooks/spec", status_code=status.HTTP_202_ACCEPTED)
 async def handle_webhook(
         request: Request,
-        x_signature: str = Header(..., alias="X-Signature")
+        x_signature: str = Header(..., alias="X-Signature"),
+        background_tasks: BackgroundTasks = None
 ):
     logger.info("Received webhook request")
 
@@ -75,7 +80,91 @@ async def handle_webhook(
             pr_data["pr_number"],
             f'{pr_data["repo_name"]}.spec'
         )
+    except ValueError as e:
+        logger.info(f"忽略不支持的事件: {e}")
+        return
+    except Exception as e:
+        logger.error(f"数据解析失败: {e}")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "无效负载")
 
+    # 启动后台任务处理
+    background_tasks.add_task(process_initial_repair, pr_data, spec_content)
+    return {"status": "处理已启动"}
+
+
+async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: int = 3600) -> bool:
+    """优化后的异步等待构建完成"""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        status_data = await maker.get_build_status(build_id)  # 直接调用异步版本
+        if status_data:
+            build_status = status_data.get('status')
+            if build_status == 201:
+                return True
+            elif build_status == 202:
+                return False
+        await asyncio.sleep(interval)
+    return False
+
+
+async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, retry_count: int):
+    """处理构建重试逻辑"""
+    try:
+        build_status = await wait_for_build_completion(build_id)
+
+        if build_status:
+            # 构建成功，提交评论
+            comment = settings.fix_success_comment.format(
+                retries_used=retry_count,
+                maker_url=(
+                    f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/"
+                    f"overview?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}"
+                )
+            )
+            git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
+            logger.info(f"PR #{pr_data['pr_number']} 构建成功，重试次数: {retry_count}")
+
+        elif retry_count < MAX_RETRIES:
+            # 获取失败日志
+            loop = asyncio.get_event_loop()
+            log_url = maker.get_log_url(maker.get_result_root(build_id))
+            log_content = await loop.run_in_executor(None, maker.get_build_log, log_url)
+
+            # 分析新日志生成修正
+            chat = silicon_client.SiliconFlowChat(settings.silicon_token)
+            new_spec = chat.analyze_build_log(current_spec, log_content)
+
+            # 提交新修正
+            git_api.update_spec_file(
+                pr_data["source_url"],
+                new_spec,
+                pr_data["pr_number"]
+            )
+
+            # 触发新构建
+            new_build_id = maker.start_build_single(
+                settings.os_repair_project,
+                pr_data["repo_name"]
+            )
+
+            # 递归处理
+            await handle_build_retries(pr_data, new_spec, new_build_id, retry_count + 1)
+
+        else:
+            # 达到最大重试次数
+            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES)
+            git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
+            logger.error(f"PR #{pr_data['pr_number']} 构建失败，已达最大重试次数")
+
+    except Exception as e:
+        logger.error(f"处理重试时发生异常: {e}")
+        comment = settings.fix_error_comment.format(error=str(e))
+        git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
+
+
+async def process_initial_repair(pr_data: dict, original_spec: str):
+    """Process initial repair."""
+    try:
         # Get build log
         os_project = settings.os_project.format(
             repo=pr_data["repo_name"],
@@ -87,7 +176,7 @@ async def handle_webhook(
 
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        fixed_spec = chat.analyze_build_log(spec_content, log_content)
+        fixed_spec = chat.analyze_build_log(original_spec, log_content)
 
         # Update spec in fork
         fork_url, commit_sha = git_api.update_spec_file(
@@ -112,24 +201,10 @@ async def handle_webhook(
             settings.flag_build,
             settings.flag_publish
         )
-        maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
+        repair_build_id = maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
 
-        # Post build status to PR
-        comment = settings.fix_result_comment.format(
-            commit_url=f"{fork_url}/commit/{commit_sha}",
-            maker_url=(
-                f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/"
-                f"overview?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}"
-            )
-        )
-        git_api.comment_on_pr(
-            pr_data["repo_url"],
-            pr_data["pr_number"],
-            comment
-        )
-
-        logger.info("Webhook processed successfully")
-        return {"status": "processing_started"}
+        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0)
     except Exception as e:
-        logger.critical(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(500, "Internal server error")
+        logger.error(f"初始修复流程失败: {e}")
+        comment = settings.fix_error_comment.format(error=str(e))
+        git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
