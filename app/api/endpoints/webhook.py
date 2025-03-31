@@ -136,7 +136,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
             new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content)
 
             # 提交新修正
-            fork_url, commit_sha, branch = git_api.update_spec_file(
+            fork_url, commit_sha, branch = git_api.check_and_push(
                 pr_data["source_url"],
                 new_spec,
                 pr_data["pr_number"]
@@ -183,7 +183,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
 
         # Update spec in fork
-        fork_url, commit_sha, branch = git_api.update_spec_file(
+        fork_url, commit_sha, branch = git_api.check_and_push(
             pr_data["source_url"],
             fixed_spec,
             pr_data["pr_number"]
