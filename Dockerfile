@@ -5,6 +5,8 @@ RUN mkdir -p /tmp /var/tmp /usr/tmp && \
 
 WORKDIR /app
 
+COPY requirements.txt .
+
 RUN apk update && \
     apk add --no-cache --virtual .build-deps \
         python3-dev \
