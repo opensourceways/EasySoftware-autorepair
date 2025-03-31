@@ -1,7 +1,8 @@
 FROM python:3.9-alpine
 
-RUN mkdir -p /tmp /var/tmp /usr/tmp && \
-    chmod 1777 /tmp /var/tmp /usr/tmp
+RUN mkdir -p /tmp /var/tmp /usr/tmp /app/tmp && \
+    chmod 1777 /tmp /var/tmp /usr/tmp && \
+    chmod 777 /app /app/tmp
 
 WORKDIR /app
 
@@ -19,22 +20,24 @@ RUN apk update && \
     pip install --upgrade pip && \
     pip install --no-cache-dir gunicorn uvicorn && \
     pip install --no-cache-dir -r requirements.txt && \
+    adduser -D -u 1000 repair-robt && \
+    chown -R repair-robt:repair-robt /app && \
     apk del .build-deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    TMPDIR=/app/tmp
+    TMPDIR=/tmp
 
-RUN mkdir -p /app/tmp && \
-    chmod 777 /app/tmp && \
-    adduser -D -u 1000 repair-robt && \
-    chown -R repair-robt:repair-robt /app
-
-WORKDIR /app
 USER repair-robt
 COPY --chown=repair-robt:repair-robt . .
 
 EXPOSE 8080
+
+# 打印当前工作目录下的文件
+RUN echo "Files in /app:" && ls -l /app
+
+# 打印当前 /tmp 目录下的文件
+RUN echo "Files in /tmp:" && ls -l /tmp
 
 CMD ["gunicorn", "app.main:app", \
      "--bind", "0.0.0.0:8080", \
