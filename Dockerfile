@@ -1,27 +1,45 @@
-# 使用alpine镜像更小巧（可选，根据依赖兼容性决定）
-FROM python:3.11-alpine AS builder
-
-# 创建非root用户（提升安全性）
-RUN adduser -D -u 1000 repair-robt
+FROM openeuler/openeuler:22.03
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# 安装系统依赖（根据项目需要调整，如gcc/postgresql-dev等）
-RUN apk add --no-cache gcc musl-dev libffi-dev
-
-# 先单独复制依赖文件，利用Docker层缓存
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
 
-# 复制项目代码（确保已配置.dockerignore）
-COPY . .
+RUN dnf update -y && \
+    dnf install -y \
+        python3 \
+        python3-devel \
+        python3-pip \
+        gcc \
+        gcc-c++ \
+        make \
+        libffi-devel \
+        git && \
+    dnf install -y libstdc++ libffi && \
+    pip install --no-cache-dir gunicorn uvicorn && \
+    pip install --no-cache-dir -r requirements.txt && \
+    adduser -u 1000 repair-robt && \
+    chown -R repair-robt:repair-robt /app && \
+    dnf remove -y \
+        python3-devel \
+        gcc \
+        gcc-c++ \
+        make \
+        libffi-devel && \
+    dnf clean all
 
-# 切换用户
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 USER repair-robt
+COPY --chown=repair-robt:repair-robt . .
 
-# 生产环境移除--reload，建议用gunicorn+uvicorn workers
-CMD ["gunicorn", "app.main:app", "--bind", "0.0.0.0:8080", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker"]
+EXPOSE 8080
+
+CMD ["gunicorn", "app.main:app", \
+     "--timeout", "0", \
+     "--bind", "0.0.0.0:8080", \
+     "--workers", "4", \
+     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--worker-tmp-dir", "/dev/shm", \
+     "--preload"]

@@ -1,6 +1,13 @@
+import os
+import shutil
+import stat
+import subprocess
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from urllib.parse import urlparse
+
+import httpx
+
 from app.config import settings
 import requests
 import logging
@@ -61,29 +68,26 @@ class GiteeForkService(ForkServiceInterface):
             return response.json()["commit"]["sha"]
         return None
 
-    def _create_branch(self, repo, branch_name, base_sha):
-        """创建新分支"""
-        full_branch_name = f"repair-{branch_name}"
-
+    def _create_branch(self, repo, branch_name):
         # 先检查分支是否存在
-        check_url = f"/repos/{self.current_user}/{repo}/branches/{full_branch_name}"
+        check_url = f"/repos/{self.current_user}/{repo}/branches/{branch_name}"
         check_response = self.client.get(check_url)
 
         # 分支已存在时跳过创建
         if check_response.status_code == 200:
-            print(f"Branch {full_branch_name} already exists in {self.current_user}/{repo}.")
+            print(f"Branch {branch_name} already exists in {self.current_user}/{repo}.")
             return
         data = {
-                "access_token": settings.gitee_token,
-                "branch_name": f"repair-{branch_name}",
-                "refs": "master"
-            }
+            "access_token": settings.gitee_token,
+            "branch_name": branch_name,
+            "refs": "master"
+        }
         response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", data=data)
         if response.status_code != 201:
             raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
         print(f"Branch {branch_name} created successfully in {self.current_user}/{repo}.")
 
-    def create_fork(self, owner, repo, pr_num):
+    def create_fork(self, owner, repo, branch):
         # 检查当前用户是否已有仓库
         if not self._check_repo_exists(repo):
             # 创建fork
@@ -92,15 +96,8 @@ class GiteeForkService(ForkServiceInterface):
                 raise Exception(f"Gitee fork failed: {response.json()}")
             print(f"Forked repository {self.current_user}/{repo} created.")
 
-        # 获取默认分支名称
-        default_branch = self._get_default_branch(repo)
-        # 获取基础分支的SHA
-        sha = self._get_branch_sha(repo, default_branch)
-        if not sha:
-            raise Exception(f"Failed to get SHA for branch {default_branch} in repository {repo}")
-
         # 创建新分支
-        self._create_branch(repo, pr_num, sha)
+        self._create_branch(repo, branch)
 
         # 返回新分支的URL
         return f"https://gitee.com/{self.current_user}/{repo}.git"
@@ -137,23 +134,35 @@ class GiteeForkService(ForkServiceInterface):
         except requests.exceptions.RequestException as e:
             print("评论 PR 失败:", e)
 
-    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
-        params = {"access_token": token}
-        try:
-            # 获取 PR 文件列表
-            response = self.client.get(f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
-            response.raise_for_status()
-            files = response.json()
+    async def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        async with httpx.AsyncClient() as client:
+            try:
+                headers = {
+                    "Authorization": f"token {token}"
+                }
+                # 异步获取PR文件列表
+                files_resp = await client.get(
+                    f"https://gitee.com/api/v5/repos/{owner}/{repo}/pulls/{pr_number}/files",
+                    headers=headers
+                )
+                files_resp.raise_for_status()
+                files = files_resp.json()
 
-            target_file = next((f for f in files if f["filename"] == file_path), None)
-            if not target_file:
-                print(f"文件 {file_path} 未在 PR 中找到")
-                return None
-            raw_response = requests.get(target_file['raw_url'], params=params)
-            raw_response.raise_for_status()
-            return raw_response.text
-        except requests.exceptions.RequestException as e:
-            print(f"API 请求失败: {e}")
+                # 查找目标文件
+                target_file = next((f for f in files if f["filename"] == file_path), None)
+                if not target_file:
+                    logger.warning(f"File {file_path} not found in PR #{pr_number}")
+                    return None
+
+                # 异步获取原始文件内容
+                raw_resp = await client.get(target_file['raw_url'], headers=headers)
+                raw_resp.raise_for_status()
+                return raw_resp.text
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Gitee API error: {e.response.status_code} {e.response.text}")
+            except Exception as e:
+                logger.error(f"Unexpected error: {str(e)}")
             return None
 
 
@@ -285,23 +294,17 @@ def parse_clone_url(clone_url: str) -> tuple:
     return owner, repo
 
 
-def update_spec_file(repo_url, file_content, pr_num):
+def update_spec_file(service, owner, repo, file_content, branch):
     """
     更新指定仓库的.spec文件
-    :param pr_num: pr编号
-    :param repo_url: 仓库URL
+    :param branch:
+    :param repo:
+    :param owner:
+    :param service:
     :param file_content: 文件内容
     """
-    platform, token, owner, repo = parse_repo_url(repo_url)
-    service = ForkServiceFactory.get_service(platform, token)
-    if owner != service.current_user:
-        clone_url = service.create_fork(owner, repo, pr_num)
-        fork_owner, fork_repo = parse_clone_url(clone_url)
-        branch = f'repair-{pr_num}'
-    else:
-        clone_url = f'{repo_url}.git'
-        fork_owner = owner
-        branch = "master"
+    clone_url = service.create_fork(owner, repo, branch)
+    fork_owner, fork_repo = parse_clone_url(clone_url)
     file_path = f'{repo}.spec'
     try:
         file_path, sha = service.submit_spec_file(
@@ -331,7 +334,48 @@ def comment_on_pr(repo_url, pr_num, comment):
         print(f"提交失败: {str(e)}")
 
 
-def get_spec_content(repo_url, pr_number, file_path):
+async def get_spec_content(repo_url, pr_number, file_path):
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
-    return service.get_spec_content(owner, repo, pr_number, file_path, token)
+    return await service.get_spec_content(owner, repo, pr_number, file_path, token)
+
+
+def check_and_push(repo_url, new_content, pr_num):
+    logger.info(f'repo_url is {repo_url}')
+    platform, token, owner, repo = parse_repo_url(repo_url)
+    temp_dir = f'temp_repo_to_amend_push_{repo}'
+    service = ForkServiceFactory.get_service(platform, token)
+    branch = 'master'
+    if service.current_user != owner:
+        branch = f'repair-{pr_num}'
+        return update_spec_file(service, owner, repo, new_content, branch)
+    else:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, onerror=force_remove_readonly)
+        file_path = f'{repo}.spec'
+        try:
+            authed_repo_url = f"https://{service.current_user}:{token}@gitee.com/{owner}/{repo}.git"
+
+            subprocess.run(["git", "clone", authed_repo_url, temp_dir], check=True)
+
+            subprocess.run(["git", "config", "user.name", "openeulerbot"], cwd=temp_dir, check=True)
+            subprocess.run(["git", "config", "user.email", "673672685@qq.com"], cwd=temp_dir, check=True)
+
+            with open(os.path.join(temp_dir, file_path), "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            subprocess.run(["git", "add", file_path], cwd=temp_dir, check=True)
+            subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=temp_dir, check=True)
+            subprocess.run(["git", "push", "origin", branch, "--force"], cwd=temp_dir, check=True)
+
+        finally:
+            commit_sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=temp_dir, text=True).strip()
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, onerror=force_remove_readonly)
+            return f'{repo_url}.git', commit_sha, branch
+
+
+def force_remove_readonly(func, path, _):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
