@@ -1,4 +1,4 @@
-FROM python:3.11-alpine AS builder
+FROM python:3.11-alpine
 
 RUN mkdir -p /tmp /var/tmp /usr/tmp && \
     chmod 1777 /tmp /var/tmp /usr/tmp
@@ -7,26 +7,17 @@ WORKDIR /app
 
 RUN apk update && \
     apk add --no-cache --virtual .build-deps \
-    python3-dev \
-    musl-dev \
-    gcc \
-    g++ \
-    make \
-    libffi-dev
-
-COPY requirements.txt .
-RUN pip install --upgrade pip && \
+        python3-dev \
+        musl-dev \
+        gcc \
+        g++ \
+        make \
+        libffi-dev && \
+    apk add --no-cache libstdc++ libffi && \
+    pip install --upgrade pip && \
     pip install --no-cache-dir gunicorn uvicorn && \
-    pip install --no-cache-dir -r requirements.txt
-
-FROM python:3.11-alpine
-
-RUN apk update && \
-    apk add --no-cache libstdc++ libffi
-
-COPY --from=builder /usr/lib/python3.11/site-packages /usr/lib/python3.11/site-packages
-COPY --from=builder /usr/bin/gunicorn /usr/bin/gunicorn
-COPY --from=builder /usr/bin/uvicorn /usr/bin/uvicorn
+    pip install --no-cache-dir -r requirements.txt && \
+    apk del .build-deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -39,7 +30,6 @@ RUN mkdir -p /app/tmp && \
 
 WORKDIR /app
 USER repair-robt
-
 COPY --chown=repair-robt:repair-robt . .
 
 EXPOSE 8080
