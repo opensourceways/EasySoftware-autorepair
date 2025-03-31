@@ -15,7 +15,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
-ENV TMPDIR /app/tmp  # 显式指定应用级临时目录
+ENV TMPDIR /app/tmp
 
 RUN apk add --no-cache \
     gcc \
