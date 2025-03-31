@@ -12,3 +12,4 @@ env.txt
 Dockerfile
 docker-compose.yml
 tests
+tmp/
