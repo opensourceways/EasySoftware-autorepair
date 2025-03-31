@@ -1,9 +1,11 @@
+import os
+
 import yaml
 
 
 class Settings:
     def __init__(self):
-        config_path_env = "conf.yaml"
+        config_path_env = ""
         with open(config_path_env, 'r', encoding="utf-8") as config_file:
             config = yaml.safe_load(config_file)
             self.env: str = config.get("APP_ENV")
@@ -32,6 +34,7 @@ class Settings:
             self.fix_success_comment: str = config.get("FIX_SUCCESS_COMMENT")
             self.fix_failure_comment: str = config.get("FIX_FAILURE_COMMENT")
             self.fix_error_comment: str = config.get("FIX_ERROR_COMMENT")
+        os.remove(config_path_env)
 
 
 settings = Settings()
