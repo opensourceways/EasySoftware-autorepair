@@ -3,9 +3,6 @@ FROM python:3.11-alpine AS builder
 RUN mkdir -p /tmp /var/tmp /usr/tmp && \
     chmod 1777 /tmp /var/tmp /usr/tmp
 
-RUN mkdir -p /app/tmp && \
-    chmod 777 /app/tmp
-
 WORKDIR /app
 
 RUN apk update && \
@@ -15,25 +12,25 @@ RUN apk update && \
     gcc \
     g++ \
     make \
-    libffi-dev && \
-    apk add --no-cache \
-    libstdc++ \
-    libffi
+    libffi-dev
 
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install --user --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir gunicorn uvicorn && \
+    pip install --no-cache-dir -r requirements.txt
 
 FROM python:3.11-alpine
 
-# 复制构建结果（关键优化步骤）
-COPY --from=builder /app /app
-COPY --from=builder /root/.local /root/.local
+RUN apk update && \
+    apk add --no-cache libstdc++ libffi
 
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV TMPDIR=/app/tmp
+COPY --from=builder /usr/lib/python3.11/site-packages /usr/lib/python3.11/site-packages
+COPY --from=builder /usr/bin/gunicorn /usr/bin/gunicorn
+COPY --from=builder /usr/bin/uvicorn /usr/bin/uvicorn
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TMPDIR=/app/tmp
 
 RUN mkdir -p /app/tmp && \
     chmod 777 /app/tmp && \
@@ -42,6 +39,8 @@ RUN mkdir -p /app/tmp && \
 
 WORKDIR /app
 USER repair-robt
+
+COPY --chown=repair-robt:repair-robt . .
 
 EXPOSE 8080
 
