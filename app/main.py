@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from app.api.endpoints import webhook
 from app.config import settings
-from app.utils import euler_maker_api
+
 
 app = FastAPI(title="Spec Webhook Service", version="1.0.0")
 

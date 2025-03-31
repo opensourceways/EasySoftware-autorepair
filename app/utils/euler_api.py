@@ -190,7 +190,7 @@ class OAuthClient:
         try:
             version = self.get_privacy_version()
             self.authenticate(version)
-            self.baseinfo(version)
+            self.base_info(version)
             auth_code = self.get_auth_code()
             return self.get_access_token(auth_code)
         except OAuthError as e:

@@ -63,10 +63,21 @@ class GiteeForkService(ForkServiceInterface):
 
     def _create_branch(self, repo, branch_name, base_sha):
         """创建新分支"""
+        full_branch_name = f"repair-{branch_name}"
+
+        # 先检查分支是否存在
+        check_url = f"/repos/{self.current_user}/{repo}/branches/{full_branch_name}"
+        check_response = self.client.get(check_url)
+
+        # 分支已存在时跳过创建
+        if check_response.status_code == 200:
+            print(f"Branch {full_branch_name} already exists in {self.current_user}/{repo}.")
+            return
         data = {
-            "branch_name": branch_name,
-            "ref": base_sha
-        }
+                "access_token": settings.gitee_token,
+                "branch_name": f"repair-{branch_name}",
+                "refs": "master"
+            }
         response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", data=data)
         if response.status_code != 201:
             raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
@@ -92,18 +103,18 @@ class GiteeForkService(ForkServiceInterface):
         self._create_branch(repo, pr_num, sha)
 
         # 返回新分支的URL
-        return f"https://gitee.com/{self.current_user}/{repo}/tree/{pr_num}/"
+        return f"https://gitee.com/{self.current_user}/{repo}.git"
 
     def get_file_sha(self, owner, repo, file_path, branch="master"):
         response = self.client.get(f"/repos/{owner}/{repo}/contents/{file_path}?ref={branch}")
         if response.status_code == 200:
-            return response.json().get("sha")
+            return response.json()["sha"]
+
         return None
 
     def submit_spec_file(self, fork_owner, fork_repo, content, file_path, branch="master"):
         # 获取 SHA 值
         sha = self.get_file_sha(fork_owner, fork_repo, file_path, branch)
-
         data = {
             "content": b64encode(content.encode()).decode(),
             "message": "Add spec file",
@@ -283,19 +294,25 @@ def update_spec_file(repo_url, file_content, pr_num):
     """
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
-    clone_url = service.create_fork(owner, repo, pr_num)
-    fork_owner, fork_repo = parse_clone_url(clone_url)
-    file_path = f'{fork_repo}.spec'
+    if owner != service.current_user:
+        clone_url = service.create_fork(owner, repo, pr_num)
+        fork_owner, fork_repo = parse_clone_url(clone_url)
+        branch = f'repair-{pr_num}'
+    else:
+        clone_url = f'{repo_url}.git'
+        fork_owner = owner
+        branch = "master"
+    file_path = f'{repo}.spec'
     try:
         file_path, sha = service.submit_spec_file(
             fork_owner=fork_owner,
             fork_repo=repo,  # 假设仓库名不变
             content=file_content,
             file_path=file_path,
-            branch=f'{pr_num}',
+            branch=branch,
         )
         print(f"文件已提交至: {file_path}")
-        return clone_url, sha
+        return clone_url, sha, branch
     except Exception as e:
         print(f"提交失败: {str(e)}")
 

@@ -3,7 +3,7 @@ import yaml
 
 class Settings:
     def __init__(self):
-        config_path_env = "../conf.yaml"
+        config_path_env = "conf.yaml"
         with open(config_path_env, 'r', encoding="utf-8") as config_file:
             config = yaml.safe_load(config_file)
             self.env: str = config.get("APP_ENV")
@@ -25,10 +25,13 @@ class Settings:
             self.accept_cmds: list[str] = config.get("ACCEPT_CMDS")
             self.system_prompt: str = config.get("SYSTEM_PROMPT")
             self.user_prompt: str = config.get("USER_PROMPT")
+            self.user_prompt_python: str = config.get("USER_PROMPT_PYTHON")
             self.ai_model: str = config.get("AI_MODEL")
             self.model_max_tokens: int = config.get("MODEL_MAX_TOKENS")
             self.model_temperature: float = config.get("MODEL_TEMPERATURE")
-            self.fix_result_comment: str = config.get("FIX_RESULT_COMMENT")
+            self.fix_success_comment: str = config.get("FIX_SUCCESS_COMMENT")
+            self.fix_failure_comment: str = config.get("FIX_FAILURE_COMMENT")
+            self.fix_error_comment: str = config.get("FIX_ERROR_COMMENT")
 
 
 settings = Settings()

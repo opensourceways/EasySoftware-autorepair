@@ -68,6 +68,7 @@ def add_software_package(
     }
 
     response = _request_wrapper("PUT", url, json=body)
+    logger.info(f"url: {url}, 添加软件包响应: {response.status_code}, body: {body}")
     return response is not None and response.status_code == 200
 
 
@@ -97,8 +98,8 @@ def add_build_target(
             }
         }
     }
-
     response = _request_wrapper("PUT", url, json=body)
+    logger.info(f"url: {url}, 添加构建目标响应: {response.status_code}, body: {body}")
     return response is not None and response.status_code == 200
 
 
@@ -109,7 +110,18 @@ def start_build_single(project: str, software_package: str) -> Optional[str]:
 
     response = _request_wrapper("POST", url, json=body)
     if response:
-        return response.json().get("build_id")
+        logger.info(f"url: {url}, 启动构建响应: {response.status_code}, body: {body}")
+        json_data = response.json()
+        data = json_data.get("data")
+
+        # 确保data是字典且非空
+        if isinstance(data, dict) and data:
+            # 获取第一个键作为build_id（假设单个构建场景）
+            build_id = next(iter(data.keys()))
+            return build_id
+        else:
+            logger.warning("响应中未找到有效的data字段或data为空")
+            return None
     return None
 
 
@@ -234,25 +246,28 @@ def get_result_root(job_id: str) -> Optional[str]:
 
 def get_log_url(result_root: str) -> str:
     """构造日志URL"""
-    return f"https://eulermaker.compass-ci.openseuler.openatom.cn/{result_root}/dmesg"
+    return f"https://eulermaker.compass-ci.openeuler.openatom.cn/api/{result_root}/dmesg"
 
 
-def get_build_log(url: str, lines: int = 200) -> Optional[str]:
-    """获取指定行数的构建日志"""
+def get_build_log(url):
     try:
-        with requests.get(url, stream=True, timeout=REQUEST_TIMEOUT) as response:
-            response.raise_for_status()
+        # 发送GET请求
+        response = requests.get(url)
 
-            # 流式读取最后N行
-            buffer = []
-            for line in response.iter_lines(decode_unicode=True):
-                buffer.append(line)
-                if len(buffer) > lines * 2:  # 保留缓冲避免精确截断
-                    buffer = buffer[-lines:]
+        # 检查请求是否成功
+        response.raise_for_status()
 
-            return '\n'.join(buffer[-lines:])
-    except RequestException as e:
-        print(f"获取日志失败: {e}")
+        # 将响应内容按行分割
+        lines = response.text.splitlines()
+
+        # 只保留最后500行
+        last_500_lines = lines[-500:]
+
+        # 将行列表重新组合为字符串
+        return "\n".join(last_500_lines)
+    except requests.exceptions.RequestException as e:
+        # 处理请求异常
+        print(f"Error fetching URL: {e}")
         return None
 
 
@@ -262,20 +277,21 @@ async def get_build_status(
         base_delay: float = 30.0
 ) -> Optional[Dict]:
     """异步优化版本"""
-    api_url = "https://eulermaker.compass-ci.openseuler.openagent.cn/api/data-api/search"
     query_body = {
         "index": "builds",
         "query": {
             "size": 1,
-            "_source": ["build_id", "status", "progress"],
+            "_source": ["build_id", "status"],
             "query": {"term": {"build_id": build_id}}
         }
     }
-
+    logger.info(f"url: {BASE_DATA_API_URL}/search, query_body: {query_body}")
     async with httpx.AsyncClient() as client:
         for attempt in range(1, max_retries + 1):
             try:
-                response = await client.post(api_url, json=query_body, timeout=50)
+                headers = get_request_headers()
+                response = await client.post(f"{BASE_DATA_API_URL}/search", headers=headers, json=query_body,
+                                             timeout=50)
                 response.raise_for_status()
                 data = response.json()
 

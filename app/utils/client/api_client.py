@@ -36,7 +36,8 @@ class ApiClient:
     def get(self, endpoint):
         url = f"{self.base_url}{endpoint}"
         response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
+        if response.status_code != 404:
+            response.raise_for_status()
         return response
 
     def post(self, endpoint, data=None):

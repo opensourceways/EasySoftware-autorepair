@@ -49,7 +49,7 @@ class SiliconFlowChat:
         except Exception as exp:
             return f"请求异常：{str(exp)}"
 
-    def analyze_build_log(self, specContent, logContent):
+    def analyze_build_log(self, repo, specContent, logContent):
         # 调用API
         response = self.chat(messages=[{"role": "system", "content": settings.system_prompt},
                                        {"role": "user",

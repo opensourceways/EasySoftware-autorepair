@@ -11,6 +11,7 @@ import hashlib
 import logging
 
 router = APIRouter()
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 
@@ -52,16 +53,17 @@ def extract_pr_data(data: dict) -> dict:
 @router.post("/webhooks/spec", status_code=status.HTTP_202_ACCEPTED)
 async def handle_webhook(
         request: Request,
-        x_signature: str = Header(..., alias="X-Signature"),
+        x_signature: str = Header(None),
         background_tasks: BackgroundTasks = None
 ):
     logger.info("Received webhook request")
 
     # Verify signature
     body = await request.body()
-    if not verify_signature(body, x_signature):
-        logger.warning("Invalid signature")
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid signature")
+    if x_signature:
+        if not verify_signature(body, x_signature):
+            logger.warning("Invalid signature")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid signature")
 
     try:
         data = await request.json()
@@ -107,7 +109,8 @@ async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: 
     return False
 
 
-async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, retry_count: int):
+async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, retry_count: int, commit_url: str,
+                               maker_url: str):
     """处理构建重试逻辑"""
     try:
         build_status = await wait_for_build_completion(build_id)
@@ -115,11 +118,8 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
         if build_status:
             # 构建成功，提交评论
             comment = settings.fix_success_comment.format(
-                retries_used=retry_count,
-                maker_url=(
-                    f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/"
-                    f"overview?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}"
-                )
+                commit_url=commit_url,
+                maker_url=maker_url
             )
             git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
             logger.info(f"PR #{pr_data['pr_number']} 构建成功，重试次数: {retry_count}")
@@ -127,15 +127,16 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
         elif retry_count < MAX_RETRIES:
             # 获取失败日志
             loop = asyncio.get_event_loop()
-            log_url = maker.get_log_url(maker.get_result_root(build_id))
+            job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
+            log_url = maker.get_log_url(maker.get_result_root(job_id))
             log_content = await loop.run_in_executor(None, maker.get_build_log, log_url)
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-            new_spec = chat.analyze_build_log(current_spec, log_content)
+            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content)
 
             # 提交新修正
-            git_api.update_spec_file(
+            fork_url, commit_sha, branch = git_api.update_spec_file(
                 pr_data["source_url"],
                 new_spec,
                 pr_data["pr_number"]
@@ -146,13 +147,16 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
                 settings.os_repair_project,
                 pr_data["repo_name"]
             )
+            repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
+            commit_url = f"{fork_url}/commit/{commit_sha}"
+            maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
-            # 递归处理
-            await handle_build_retries(pr_data, new_spec, new_build_id, retry_count + 1)
+        # 递归处理
+            await handle_build_retries(pr_data, new_spec, new_build_id, retry_count + 1, commit_url, maker_url)
 
         else:
             # 达到最大重试次数
-            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES)
+            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES, commit_url=commit_url, maker_url=maker_url)
             git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
             logger.error(f"PR #{pr_data['pr_number']} 构建失败，已达最大重试次数")
 
@@ -176,10 +180,10 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
 
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        fixed_spec = chat.analyze_build_log(original_spec, log_content)
+        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
 
         # Update spec in fork
-        fork_url, commit_sha = git_api.update_spec_file(
+        fork_url, commit_sha, branch = git_api.update_spec_file(
             pr_data["source_url"],
             fixed_spec,
             pr_data["pr_number"]
@@ -190,7 +194,8 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
             settings.os_repair_project,
             pr_data["repo_name"],
             "",
-            fork_url
+            fork_url,
+            branch
         )
         maker.add_build_target(
             settings.os_repair_project,
@@ -203,7 +208,11 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         )
         repair_build_id = maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
 
-        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0)
+        repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
+        commit_url = f"{fork_url}/commit/{commit_sha}"
+        maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
+
+        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:
         logger.error(f"初始修复流程失败: {e}")
         comment = settings.fix_error_comment.format(error=str(e))
