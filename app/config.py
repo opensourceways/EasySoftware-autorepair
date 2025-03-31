@@ -36,7 +36,7 @@ class Settings:
             self.fix_success_comment: str = config.get("FIX_SUCCESS_COMMENT")
             self.fix_failure_comment: str = config.get("FIX_FAILURE_COMMENT")
             self.fix_error_comment: str = config.get("FIX_ERROR_COMMENT")
-        os.remove(config_path_env)
+        #os.remove(config_path_env)
 
 
 settings = Settings()
