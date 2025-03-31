@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.9-alpine
 
 RUN mkdir -p /tmp /var/tmp /usr/tmp && \
     chmod 1777 /tmp /var/tmp /usr/tmp
