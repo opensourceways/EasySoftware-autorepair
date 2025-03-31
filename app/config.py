@@ -5,7 +5,9 @@ import yaml
 
 class Settings:
     def __init__(self):
-        config_path_env = ""
+        config_path_env = os.getenv("CONFIG_PATH")
+        if not config_path_env:
+            raise ValueError("CONFIG_PATH environment variable is not set.")
         with open(config_path_env, 'r', encoding="utf-8") as config_file:
             config = yaml.safe_load(config_file)
             self.env: str = config.get("APP_ENV")
