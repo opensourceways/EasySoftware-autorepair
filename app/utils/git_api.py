@@ -341,6 +341,8 @@ def check_and_push(repo_url, new_content, pr_num):
     logger.info(f'repo_url is {repo_url}')
     platform, token, owner, repo = parse_repo_url(repo_url)
     temp_dir = f'temp_repo_to_amend_push_{repo}'
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir, onerror=force_remove_readonly)
     service = ForkServiceFactory.get_service(platform, token)
     branch = 'master'
     if service.current_user != owner:
