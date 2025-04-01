@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from app.api.endpoints import webhook
 from app.config import settings
 
@@ -15,6 +15,6 @@ async def validate_config(request: Request, call_next):
     return await call_next(request)
 
 
-@app.get("/health")
+@app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
     return {"status": "ok", "env": settings.env}
