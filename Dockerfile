@@ -37,7 +37,7 @@ COPY --chown=repair-robt:repair-robt . .
 EXPOSE 8080
 
 CMD ["gunicorn", "app.main:app", \
-     "--timeout", "120", \
+     "--timeout", "1200", \
      "--bind", "0.0.0.0:8080", \
      "--workers", "4", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
