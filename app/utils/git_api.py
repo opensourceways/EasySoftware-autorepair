@@ -351,7 +351,7 @@ def check_and_push(repo_url, new_content, pr_num):
         return update_spec_file(service, owner, repo, new_content, branch)
     else:
         if os.path.exists(temp_dir):
-            os.remove(temp_dir)
+            shutil.rmtree(temp_dir, onerror=force_remove_readonly)
         file_path = f'{repo}.spec'
         try:
             authed_repo_url = f"https://{service.current_user}:{token}@gitee.com/{owner}/{repo}.git"
@@ -372,5 +372,10 @@ def check_and_push(repo_url, new_content, pr_num):
             commit_sha = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=temp_dir, text=True).strip()
             if os.path.exists(temp_dir):
-                os.remove(temp_dir)
+                shutil.rmtree(temp_dir, onerror=force_remove_readonly)
             return f'{repo_url}.git', commit_sha, branch
+
+
+def force_remove_readonly(func, path, _):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
