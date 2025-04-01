@@ -1,9 +1,5 @@
 FROM openeuler/openeuler:22.03
 
-RUN mkdir -p /tmp /var/tmp /usr/tmp /app/tmp && \
-    chmod 1777 /tmp /var/tmp /usr/tmp && \
-    chmod 777 /app /app/tmp
-
 WORKDIR /app
 
 COPY requirements.txt .
@@ -18,7 +14,6 @@ RUN dnf update -y && \
         make \
         libffi-devel && \
     dnf install -y libstdc++ libffi && \
-    pip install --upgrade pip && \
     pip install --no-cache-dir gunicorn uvicorn && \
     pip install --no-cache-dir -r requirements.txt && \
     adduser -u 1000 repair-robt && \
@@ -34,7 +29,6 @@ RUN dnf update -y && \
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    TMPDIR=/tmp
 
 USER repair-robt
 COPY --chown=repair-robt:repair-robt . .
