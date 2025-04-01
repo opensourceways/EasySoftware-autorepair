@@ -128,7 +128,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
             loop = asyncio.get_event_loop()
             job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
             log_url = maker.get_log_url(maker.get_result_root(job_id))
-            log_content = await loop.run_in_executor(None, maker.get_build_log, log_url)
+            log_content = await maker.get_build_log(log_url)
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)

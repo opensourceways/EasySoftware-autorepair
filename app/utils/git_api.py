@@ -338,9 +338,9 @@ async def get_spec_content(repo_url, pr_number, file_path):
 
 
 def check_and_push(repo_url, new_content, pr_num):
-    temp_dir = "temp_repo_to_amend_push"
     logger.info(f'repo_url is {repo_url}')
     platform, token, owner, repo = parse_repo_url(repo_url)
+    temp_dir = f'temp_repo_to_amend_push_{repo}'
     service = ForkServiceFactory.get_service(platform, token)
     branch = 'master'
     if service.current_user != owner:
