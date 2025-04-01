@@ -28,7 +28,7 @@ RUN dnf update -y && \
 
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
+    PYTHONUNBUFFERED=1
 
 USER repair-robt
 COPY --chown=repair-robt:repair-robt . .
