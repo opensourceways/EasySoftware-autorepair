@@ -12,7 +12,8 @@ RUN dnf update -y && \
         gcc \
         gcc-c++ \
         make \
-        libffi-devel && \
+        libffi-devel \
+        git && \
     dnf install -y libstdc++ libffi && \
     pip install --no-cache-dir gunicorn uvicorn && \
     pip install --no-cache-dir -r requirements.txt && \
@@ -34,12 +35,6 @@ USER repair-robt
 COPY --chown=repair-robt:repair-robt . .
 
 EXPOSE 8080
-
-# 打印当前工作目录下的文件
-RUN echo "Files in /app:" && ls -l /app
-
-# 打印当前 /tmp 目录下的文件
-RUN echo "Files in /tmp:" && ls -l /tmp
 
 CMD ["gunicorn", "app.main:app", \
      "--timeout", "120", \
