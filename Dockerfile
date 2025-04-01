@@ -39,7 +39,7 @@ EXPOSE 8080
 CMD ["gunicorn", "app.main:app", \
      "--timeout", "0", \
      "--bind", "0.0.0.0:8080", \
-     "--workers", "32", \
+     "--workers", "4", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
      "--worker-tmp-dir", "/dev/shm", \
      "--preload"]
