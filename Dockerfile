@@ -10,7 +10,7 @@ COPY requirements.txt .
 
 RUN dnf update -y && \
     dnf install -y \
-        python3.9 \
+        python3 \
         python3-devel \
         python3-pip \
         gcc \
