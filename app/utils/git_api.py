@@ -333,22 +333,23 @@ def check_and_push(repo_url, new_content, pr_num):
     if service.current_user != owner:
         branch = f'repair-{pr_num}'
         update_spec_file(service, owner, repo, new_content, branch)
-    file_path = f'{repo}.spec'
-    try:
-        authed_repo_url = f"https://{service.current_user}:{token}@gitee.com/{owner}/{repo}.git"
+    else:
+        file_path = f'{repo}.spec'
+        try:
+            authed_repo_url = f"https://{service.current_user}:{token}@gitee.com/{owner}/{repo}.git"
 
-        subprocess.run(["git", "clone", authed_repo_url, temp_dir], check=True)
+            subprocess.run(["git", "clone", authed_repo_url, temp_dir], check=True)
 
-        with open(os.path.join(temp_dir, file_path), "w", encoding="utf-8") as f:
-            f.write(new_content)
+            with open(os.path.join(temp_dir, file_path), "w", encoding="utf-8") as f:
+                f.write(new_content)
 
-        subprocess.run(["git", "add", file_path], cwd=temp_dir, check=True)
-        subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=temp_dir, check=True)
-        subprocess.run(["git", "push", "origin", branch, "--force"], cwd=temp_dir, check=True)
+            subprocess.run(["git", "add", file_path], cwd=temp_dir, check=True)
+            subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=temp_dir, check=True)
+            subprocess.run(["git", "push", "origin", branch, "--force"], cwd=temp_dir, check=True)
 
-    finally:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, onerror=force_remove_readonly)
+        finally:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, onerror=force_remove_readonly)
 
 
 def force_remove_readonly(func, path, _):
