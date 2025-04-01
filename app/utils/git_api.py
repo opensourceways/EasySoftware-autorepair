@@ -78,10 +78,10 @@ class GiteeForkService(ForkServiceInterface):
             print(f"Branch {branch_name} already exists in {self.current_user}/{repo}.")
             return
         data = {
-                "access_token": settings.gitee_token,
-                "branch_name": branch_name,
-                "refs": "master"
-            }
+            "access_token": settings.gitee_token,
+            "branch_name": branch_name,
+            "refs": "master"
+        }
         response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", data=data)
         if response.status_code != 201:
             raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
@@ -137,12 +137,12 @@ class GiteeForkService(ForkServiceInterface):
     async def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
         async with httpx.AsyncClient() as client:
             try:
-                headers={
+                headers = {
                     "Authorization": f"token {token}"
                 }
                 # 异步获取PR文件列表
                 files_resp = await client.get(
-                    f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files",
+                    f"https://gitee.com/api/v5/repos/{owner}/{repo}/pulls/{pr_number}/files",
                     headers=headers
                 )
                 files_resp.raise_for_status()
@@ -160,7 +160,7 @@ class GiteeForkService(ForkServiceInterface):
                 return raw_resp.text
 
             except httpx.HTTPStatusError as e:
-                logger.error(f"GitHub API error: {e.response.status_code} {e.response.text}")
+                logger.error(f"Gitee API error: {e.response.status_code} {e.response.text}")
             except Exception as e:
                 logger.error(f"Unexpected error: {str(e)}")
             return None
