@@ -340,6 +340,9 @@ def check_and_push(repo_url, new_content, pr_num):
 
             subprocess.run(["git", "clone", authed_repo_url, temp_dir], check=True)
 
+            subprocess.run(["git", "config", "user.name", "openeulerbot"], cwd=temp_dir, check=True)
+            subprocess.run(["git", "config", "user.email", "bot@openeuler.com"], cwd=temp_dir, check=True)
+
             with open(os.path.join(temp_dir, file_path), "w", encoding="utf-8") as f:
                 f.write(new_content)
 
