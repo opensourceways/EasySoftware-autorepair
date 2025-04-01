@@ -352,11 +352,12 @@ def check_and_push(repo_url, new_content, pr_num):
             subprocess.run(["git", "push", "origin", branch, "--force"], cwd=temp_dir, check=True)
 
         finally:
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, onerror=force_remove_readonly)
             commit_sha = subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], cwd=temp_dir, text=True).strip()
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, onerror=force_remove_readonly)
             return repo_url, commit_sha, branch
+
 
 def force_remove_readonly(func, path, _):
     os.chmod(path, stat.S_IWRITE)
