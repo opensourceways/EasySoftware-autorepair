@@ -356,6 +356,7 @@ def check_and_push(repo_url, new_content, pr_num):
             if os.path.exists(temp_dir):
                 logger.info("temp dir is exist")
                 shutil.rmtree(temp_dir, onerror=force_remove_readonly)
+                logger.info("them dir is deleted")
 
 
 def force_remove_readonly(func, path, _):
