@@ -189,6 +189,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
             pr_data["pr_number"]
         )
 
+        logger.info("start euler maker build")
         # Trigger Euler Maker build
         maker.add_software_package(
             settings.os_repair_project,
@@ -197,6 +198,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
             fork_url,
             branch
         )
+        logger.info("add build target")
         maker.add_build_target(
             settings.os_repair_project,
             pr_data["repo_name"],
@@ -206,6 +208,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
             settings.flag_build,
             settings.flag_publish
         )
+        logger.info("start build single")
         repair_build_id = maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
 
         repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
