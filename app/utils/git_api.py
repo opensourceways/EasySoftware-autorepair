@@ -5,6 +5,9 @@ import subprocess
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from urllib.parse import urlparse
+
+import httpx
+
 from app.config import settings
 import requests
 import logging
@@ -131,23 +134,32 @@ class GiteeForkService(ForkServiceInterface):
         except requests.exceptions.RequestException as e:
             print("评论 PR 失败:", e)
 
-    def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
-        params = {"access_token": token}
-        try:
-            # 获取 PR 文件列表
-            response = self.client.get(f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
-            response.raise_for_status()
-            files = response.json()
+    async def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        async with httpx.AsyncClient() as client:
+            try:
+                # 异步获取PR文件列表
+                files_resp = await client.get(
+                    f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files",
+                    params={"access_token": token}
+                )
+                files_resp.raise_for_status()
+                files = files_resp.json()
 
-            target_file = next((f for f in files if f["filename"] == file_path), None)
-            if not target_file:
-                print(f"文件 {file_path} 未在 PR 中找到")
-                return None
-            raw_response = requests.get(target_file['raw_url'], params=params)
-            raw_response.raise_for_status()
-            return raw_response.text
-        except requests.exceptions.RequestException as e:
-            print(f"API 请求失败: {e}")
+                # 查找目标文件
+                target_file = next((f for f in files if f["filename"] == file_path), None)
+                if not target_file:
+                    logger.warning(f"File {file_path} not found in PR #{pr_number}")
+                    return None
+
+                # 异步获取原始文件内容
+                raw_resp = await client.get(target_file['raw_url'])
+                raw_resp.raise_for_status()
+                return raw_resp.text
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"GitHub API error: {e.response.status_code} {e.response.text}")
+            except Exception as e:
+                logger.error(f"Unexpected error: {str(e)}")
             return None
 
 
@@ -319,10 +331,10 @@ def comment_on_pr(repo_url, pr_num, comment):
         print(f"提交失败: {str(e)}")
 
 
-def get_spec_content(repo_url, pr_number, file_path):
+async def get_spec_content(repo_url, pr_number, file_path):
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
-    return service.get_spec_content(owner, repo, pr_number, file_path, token)
+    return await service.get_spec_content(owner, repo, pr_number, file_path, token)
 
 
 def check_and_push(repo_url, new_content, pr_num):

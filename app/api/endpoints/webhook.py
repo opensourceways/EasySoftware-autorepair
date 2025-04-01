@@ -175,7 +175,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         )
         job_id = maker.get_job_id(os_project, pr_data["repo_name"])
         log_url = maker.get_log_url(maker.get_result_root(job_id))
-        log_content = maker.get_build_log(log_url)
+        log_content = await maker.get_build_log(log_url)
 
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
