@@ -11,7 +11,6 @@ import hashlib
 import logging
 
 router = APIRouter()
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 
