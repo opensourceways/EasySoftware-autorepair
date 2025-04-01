@@ -168,45 +168,55 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
 
 async def process_initial_repair(pr_data: dict, original_spec: str):
     """Process initial repair."""
-    # Get build log
-    os_project = settings.os_project.format(
-        repo=pr_data["repo_name"],
-        pr_number=pr_data["pr_number"]
-    )
-    job_id = maker.get_job_id(os_project, pr_data["repo_name"])
-    log_url = maker.get_log_url(maker.get_result_root(job_id))
-    log_content = maker.get_build_log(log_url)
-    # Analyze build log
-    chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-    fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
-    # Update spec in fork
-    fork_url, commit_sha, branch = git_api.check_and_push(
-        pr_data["source_url"],
-        fixed_spec,
-        pr_data["pr_number"]
-    )
-    logger.info("start euler maker build")
-    # Trigger Euler Maker build
-    maker.add_software_package(
-        settings.os_repair_project,
-        pr_data["repo_name"],
-        "",
-        fork_url,
-        branch
-    )
-    logger.info("add build target")
-    maker.add_build_target(
-        settings.os_repair_project,
-        pr_data["repo_name"],
-        settings.os_variant,
-        settings.os_arch,
-        settings.ground_projects,
-        settings.flag_build,
-        settings.flag_publish
-    )
-    logger.info("start build single")
-    repair_build_id = maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
-    repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
-    commit_url = f"{fork_url}/commit/{commit_sha}"
-    maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
-    await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0, commit_url, maker_url)
+    try:
+        # Get build log
+        os_project = settings.os_project.format(
+            repo=pr_data["repo_name"],
+            pr_number=pr_data["pr_number"]
+        )
+        job_id = maker.get_job_id(os_project, pr_data["repo_name"])
+        log_url = maker.get_log_url(maker.get_result_root(job_id))
+        log_content = maker.get_build_log(log_url)
+
+        # Analyze build log
+        chat = silicon_client.SiliconFlowChat(settings.silicon_token)
+        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
+
+        # Update spec in fork
+        fork_url, commit_sha, branch = git_api.check_and_push(
+            pr_data["source_url"],
+            fixed_spec,
+            pr_data["pr_number"]
+        )
+
+        logger.info("start euler maker build")
+        # Trigger Euler Maker build
+        maker.add_software_package(
+            settings.os_repair_project,
+            pr_data["repo_name"],
+            "",
+            fork_url,
+            branch
+        )
+        logger.info("add build target")
+        maker.add_build_target(
+            settings.os_repair_project,
+            pr_data["repo_name"],
+            settings.os_variant,
+            settings.os_arch,
+            settings.ground_projects,
+            settings.flag_build,
+            settings.flag_publish
+        )
+        logger.info("start build single")
+        repair_build_id = maker.start_build_single(settings.os_repair_project, pr_data["repo_name"])
+
+        repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
+        commit_url = f"{fork_url}/commit/{commit_sha}"
+        maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
+
+        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0, commit_url, maker_url)
+    except Exception as e:
+        logger.error(f"初始修复流程失败: {e}")
+        comment = settings.fix_error_comment.format(error=str(e))
+        git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)

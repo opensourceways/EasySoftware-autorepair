@@ -333,7 +333,7 @@ def check_and_push(repo_url, new_content, pr_num):
     branch = 'master'
     if service.current_user != owner:
         branch = f'repair-{pr_num}'
-        update_spec_file(service, owner, repo, new_content, branch)
+        return update_spec_file(service, owner, repo, new_content, branch)
     else:
         file_path = f'{repo}.spec'
         try:
@@ -354,7 +354,9 @@ def check_and_push(repo_url, new_content, pr_num):
         finally:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, onerror=force_remove_readonly)
-
+            commit_sha = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=temp_dir, text=True).strip()
+            return repo_url, commit_sha, branch
 
 def force_remove_readonly(func, path, _):
     os.chmod(path, stat.S_IWRITE)
