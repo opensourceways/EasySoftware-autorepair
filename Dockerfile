@@ -1,4 +1,4 @@
-FROM python:3.9-alpine
+FROM openeuler/openeuler:24.03-lts
 
 RUN mkdir -p /tmp /var/tmp /usr/tmp /app/tmp && \
     chmod 1777 /tmp /var/tmp /usr/tmp && \
