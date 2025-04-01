@@ -21,7 +21,7 @@ RUN dnf update -y && \
     pip install --upgrade pip && \
     pip install --no-cache-dir gunicorn uvicorn && \
     pip install --no-cache-dir -r requirements.txt && \
-    useradd -M -u 1000 repair-robt && \
+    adduser -u 1000 repair-robt && \
     chown -R repair-robt:repair-robt /app && \
     dnf remove -y \
         python3-devel \
