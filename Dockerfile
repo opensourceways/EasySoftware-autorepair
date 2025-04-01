@@ -40,6 +40,7 @@ RUN echo "Files in /app:" && ls -l /app
 RUN echo "Files in /tmp:" && ls -l /tmp
 
 CMD ["gunicorn", "app.main:app", \
+     "--timeout", "120", \
      "--bind", "0.0.0.0:8080", \
      "--workers", "4", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
