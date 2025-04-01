@@ -137,10 +137,13 @@ class GiteeForkService(ForkServiceInterface):
     async def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
         async with httpx.AsyncClient() as client:
             try:
+                headers={
+                    "Authorization": f"token {token}"
+                }
                 # 异步获取PR文件列表
                 files_resp = await client.get(
                     f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files",
-                    params={"access_token": token}
+                    headers=headers
                 )
                 files_resp.raise_for_status()
                 files = files_resp.json()
@@ -152,7 +155,7 @@ class GiteeForkService(ForkServiceInterface):
                     return None
 
                 # 异步获取原始文件内容
-                raw_resp = await client.get(target_file['raw_url'])
+                raw_resp = await client.get(target_file['raw_url'], headers=headers)
                 raw_resp.raise_for_status()
                 return raw_resp.text
 
