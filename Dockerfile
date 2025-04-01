@@ -8,21 +8,27 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN apk update && \
-    apk add --no-cache --virtual .build-deps \
-        python3-dev \
-        musl-dev \
+RUN dnf update -y && \
+    dnf install -y \
+        python3-devel \
         gcc \
-        g++ \
+        gcc-c++ \
         make \
-        libffi-dev && \
-    apk add --no-cache libstdc++ libffi && \
+        libffi-devel && \
+    dnf install -y libstdc++ libffi && \
     pip install --upgrade pip && \
     pip install --no-cache-dir gunicorn uvicorn && \
     pip install --no-cache-dir -r requirements.txt && \
-    adduser -D -u 1000 repair-robt && \
+    useradd -M -u 1000 repair-robt && \
     chown -R repair-robt:repair-robt /app && \
-    apk del .build-deps
+    dnf remove -y \
+        python3-devel \
+        gcc \
+        gcc-c++ \
+        make \
+        libffi-devel && \
+    dnf clean all
+
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
