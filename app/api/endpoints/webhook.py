@@ -69,7 +69,6 @@ async def handle_webhook(
         data = await request.json()
         pr_data = extract_pr_data(data)
     except ValueError as e:
-        logger.info(f"Ignoring unsupported event: {e}")
         return
     except Exception as e:
         logger.error(f"Payload processing failed: {e}")
