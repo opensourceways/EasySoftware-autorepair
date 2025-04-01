@@ -76,7 +76,7 @@ async def handle_webhook(
 
     try:
         # Fetch spec file
-        spec_content = git_api.get_spec_content(
+        spec_content = await git_api.get_spec_content(
             pr_data["repo_url"],
             pr_data["pr_number"],
             f'{pr_data["repo_name"]}.spec'
