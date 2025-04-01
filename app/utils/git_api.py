@@ -352,11 +352,8 @@ def check_and_push(repo_url, new_content, pr_num):
             subprocess.run(["git", "push", "origin", branch, "--force"], cwd=temp_dir, check=True)
 
         finally:
-            logger.info(f'temp dir is {temp_dir}')
             if os.path.exists(temp_dir):
-                logger.info("temp dir is exist")
                 shutil.rmtree(temp_dir, onerror=force_remove_readonly)
-                logger.info("them dir is deleted")
 
 
 def force_remove_readonly(func, path, _):
