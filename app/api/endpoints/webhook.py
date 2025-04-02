@@ -47,6 +47,7 @@ def extract_pr_data(data: dict) -> dict:
         "source_url": pull_request.get("head", {}).get("repo", {}).get("url", ""),
         "pr_number": pull_request.get("number", ""),
         "repo_name": project.get("name", ""),
+        "pr_url": pull_request.get("html_url", ""),
     }
 
 
@@ -177,7 +178,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         log_url = maker.get_log_url(maker.get_result_root(job_id))
         log_content = await maker.get_build_log(log_url)
 
-        srcDir = gitee_tool.get_dir_json(pr_data["pull_request"]["html_url"], settings.gitee_token)
+        srcDir = gitee_tool.get_dir_json(pr_data["pr_url"], settings.gitee_token)
 
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
