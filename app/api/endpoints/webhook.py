@@ -4,7 +4,7 @@ import traceback
 
 from fastapi import APIRouter, Request, HTTPException, Header, status, BackgroundTasks
 from app.config import settings
-from app.utils import git_api
+from app.utils import git_api, gitee_tool
 from app.utils.client import silicon_client
 from app.utils import euler_maker_api as maker
 import hmac
@@ -47,6 +47,7 @@ def extract_pr_data(data: dict) -> dict:
         "source_url": pull_request.get("head", {}).get("repo", {}).get("url", ""),
         "pr_number": pull_request.get("number", ""),
         "repo_name": project.get("name", ""),
+        "pr_url": pull_request.get("html_url", ""),
     }
 
 
@@ -57,14 +58,6 @@ async def handle_webhook(
         background_tasks: BackgroundTasks = None
 ):
     logger.info("Received webhook request")
-
-    # Verify signature
-    body = await request.body()
-    if x_signature:
-        if not verify_signature(body, x_signature):
-            logger.warning("Invalid signature")
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid signature")
-
     try:
         data = await request.json()
         pr_data = extract_pr_data(data)
@@ -108,7 +101,7 @@ async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: 
     return False
 
 
-async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, retry_count: int, commit_url: str,
+async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, build_id: str, retry_count: int, commit_url: str,
                                maker_url: str):
     """处理构建重试逻辑"""
     try:
@@ -132,7 +125,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content)
+            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content, srcDir)
 
             # 提交新修正
             fork_url, commit_sha, branch = git_api.check_and_push(
@@ -151,7 +144,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
             maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
         # 递归处理
-            await handle_build_retries(pr_data, new_spec, new_build_id, retry_count + 1, commit_url, maker_url)
+            await handle_build_retries(pr_data, new_spec, srcDir, new_build_id, retry_count + 1, commit_url, maker_url)
 
         else:
             # 达到最大重试次数
@@ -177,9 +170,11 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         log_url = maker.get_log_url(maker.get_result_root(job_id))
         log_content = await maker.get_build_log(log_url)
 
+        srcDir = gitee_tool.get_dir_json(pr_data["pr_url"], settings.gitee_token)
+
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
+        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content, srcDir)
 
         # Update spec in fork
         fork_url, commit_sha, branch = git_api.check_and_push(
@@ -214,7 +209,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         commit_url = f"{fork_url}/commit/{commit_sha}"
         maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
-        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0, commit_url, maker_url)
+        await handle_build_retries(pr_data, fixed_spec, srcDir, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:
         logger.error(f"初始修复流程失败: {e}")
         traceback.print_exc()
