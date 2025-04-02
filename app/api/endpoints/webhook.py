@@ -109,7 +109,7 @@ async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: 
     return False
 
 
-async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, retry_count: int, commit_url: str,
+async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, build_id: str, retry_count: int, commit_url: str,
                                maker_url: str):
     """处理构建重试逻辑"""
     try:
@@ -133,7 +133,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, build_id: str, 
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content)
+            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content, srcDir)
 
             # 提交新修正
             fork_url, commit_sha, branch = git_api.check_and_push(
@@ -217,7 +217,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         commit_url = f"{fork_url}/commit/{commit_sha}"
         maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
-        await handle_build_retries(pr_data, fixed_spec, repair_build_id, 0, commit_url, maker_url)
+        await handle_build_retries(pr_data, fixed_spec, srcDir, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:
         logger.error(f"初始修复流程失败: {e}")
         traceback.print_exc()
