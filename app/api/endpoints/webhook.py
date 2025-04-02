@@ -58,14 +58,6 @@ async def handle_webhook(
         background_tasks: BackgroundTasks = None
 ):
     logger.info("Received webhook request")
-
-    # Verify signature
-    body = await request.body()
-    if x_signature:
-        if not verify_signature(body, x_signature):
-            logger.warning("Invalid signature")
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid signature")
-
     try:
         data = await request.json()
         pr_data = extract_pr_data(data)
