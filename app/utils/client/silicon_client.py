@@ -49,14 +49,25 @@ class SiliconFlowChat:
         except Exception as exp:
             return f"请求异常：{str(exp)}"
 
-    def analyze_build_log(self, repo, specContent, logContent):
+    def analyze_build_log(self, repo, specContent, logContent, srcDir):
         # 调用API
+        user_prompt = settings.user_prompt
         response = self.chat(messages=[{"role": "system", "content": settings.system_prompt},
                                        {"role": "user",
-                                        "content": settings.user_prompt.format(specContent=specContent,
-                                                                               logContent=logContent)}])
+                                        "content": user_prompt.format(
+                                            specContent=specContent,
+                                            logContent=logContent,
+                                            srcDir=srcDir
+                                        )}])
         if "```spec" in response:
             new_spec = response.split("```spec")[1].split("```")[0].strip()
             return new_spec
         else:
             return response
+
+
+class PartialFormatter(dict):
+    def __missing__(self, key):
+        # 当键不存在时，返回原占位符 {key}
+        return f"{{{key}}}"
+

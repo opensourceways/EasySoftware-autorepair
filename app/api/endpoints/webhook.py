@@ -4,7 +4,7 @@ import traceback
 
 from fastapi import APIRouter, Request, HTTPException, Header, status, BackgroundTasks
 from app.config import settings
-from app.utils import git_api
+from app.utils import git_api, gitee_tool
 from app.utils.client import silicon_client
 from app.utils import euler_maker_api as maker
 import hmac
@@ -177,9 +177,11 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         log_url = maker.get_log_url(maker.get_result_root(job_id))
         log_content = await maker.get_build_log(log_url)
 
+        srcDir = gitee_tool.get_dir_json(pr_data["pull_request"]["html_url"], settings.gitee_token)
+
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content)
+        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content, srcDir)
 
         # Update spec in fork
         fork_url, commit_sha, branch = git_api.check_and_push(
