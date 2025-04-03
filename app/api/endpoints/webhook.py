@@ -144,7 +144,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
             maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
         # 递归处理
-            await handle_build_retries(pr_data, new_spec, new_build_id, retry_count + 1, commit_url, maker_url)
+            await handle_build_retries(pr_data, new_spec, new_build_id, srcDir, retry_count + 1, commit_url, maker_url)
 
         else:
             # 达到最大重试次数
