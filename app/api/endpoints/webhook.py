@@ -13,7 +13,7 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-MAX_RETRIES = 3
+MAX_RETRIES = 0
 
 
 def verify_signature(body: bytes, signature: str) -> bool:
@@ -86,7 +86,7 @@ async def handle_webhook(
     return {"status": "处理已启动"}
 
 
-async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: int = 3600) -> bool:
+async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: int = 36000) -> bool:
     """优化后的异步等待构建完成"""
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -106,6 +106,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
     """处理构建重试逻辑"""
     try:
         build_status = await wait_for_build_completion(build_id)
+        logger.info(f'the build result is {build_status}')
 
         if build_status:
             # 构建成功，提交评论

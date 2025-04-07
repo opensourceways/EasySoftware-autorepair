@@ -55,7 +55,7 @@ class OAuthClient:
         """获取隐私协议版本"""
         url = f"{ONEID_BASE_URL}/privacy/version"
         try:
-            response = self.session.get(url, timeout=15)
+            response = self.session.get(url, timeout=120)
             response.raise_for_status()
 
             data = response.json()
@@ -98,7 +98,7 @@ class OAuthClient:
                 url,
                 json=payload,
                 headers={"Referer": f"https://id.openeuler.org/login?{urlencode(params)}"},
-                timeout=15
+                timeout=120
             )
             response.raise_for_status()
 
@@ -125,7 +125,7 @@ class OAuthClient:
                 url,
                 headers=headers,
                 json=payload,
-                timeout=15
+                timeout=120
             )
             response.raise_for_status()
         except RequestException as e:
@@ -149,7 +149,7 @@ class OAuthClient:
             "Token": cookie["_U_T_"],
         }
         try:
-            response = self.session.get(url, headers=headers, params=params, timeout=15)
+            response = self.session.get(url, headers=headers, params=params, timeout=120)
             response.raise_for_status()
 
             data = response.json()
@@ -172,7 +172,7 @@ class OAuthClient:
         try:
             response = self.session.get(
                 f"{OAUTH_TOKEN_URL}?code={code}",
-                timeout=15
+                timeout=120
             )
             response.raise_for_status()
 
