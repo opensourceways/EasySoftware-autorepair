@@ -260,7 +260,7 @@ async def get_build_log(url: str) -> Optional[str]:
 
             # 处理内容（保持原有逻辑）
             lines = response.text.splitlines()
-            return "\n".join(lines[-500:])
+            return "\n".join(lines[-200:])
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Log request failed: {e.response.status_code}")
