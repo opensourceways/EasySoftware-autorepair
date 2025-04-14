@@ -1,4 +1,6 @@
 import logging
+import re
+
 import requests
 
 from app.config import settings
@@ -65,9 +67,28 @@ class SiliconFlowChat:
         else:
             return response
 
+    def analyze_missing_package(self, log_content):
+        warning_patterns = [
+            r"Warning:.*",
+            r"skipped:.*",
+            r"warning:.*"
+            r"WARNING:.*",
+        ]
+        warnings = []
+        for pattern in warning_patterns:
+            matches = re.findall(pattern, log_content)
+            warnings.extend(matches)
 
-class PartialFormatter(dict):
-    def __missing__(self, key):
-        # 当键不存在时，返回原占位符 {key}
-        return f"{{{key}}}"
+        response = self.chat(messages=[{"role": "system", "content": settings.analyze_system_prompt},
+                                       {"role": "user", "content": "".join(warnings)}])
+        pattern = re.compile(r"标题：(\[.*?\].*?)\s*内容：\s*(.*)", re.DOTALL)
 
+        # 查找匹配的内容
+        match = pattern.search(response)
+        title, content = "", ""
+        if match:
+            title = match.group(1).strip()  # 提取标题
+            content = match.group(2).strip()  # 提取内容
+        else:
+            print("未找到匹配内容")
+        return str(title), str(content)

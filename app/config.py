@@ -29,7 +29,7 @@ class Settings:
             self.accept_cmds: list[str] = config.get("ACCEPT_CMDS")
             self.system_prompt: str = config.get("SYSTEM_PROMPT")
             self.user_prompt: str = config.get("USER_PROMPT")
-            self.user_prompt_python: str = config.get("USER_PROMPT_PYTHON")
+            self.analyze_system_prompt: str = config.get("ANALYZE_SYSTEM_PROMPT")
             self.ai_model: str = config.get("AI_MODEL")
             self.model_max_tokens: int = config.get("MODEL_MAX_TOKENS")
             self.model_temperature: float = config.get("MODEL_TEMPERATURE")

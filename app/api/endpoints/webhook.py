@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 import traceback
 
@@ -57,9 +58,9 @@ async def handle_webhook(
         x_signature: str = Header(None),
         background_tasks: BackgroundTasks = None
 ):
-    logger.info("Received webhook request")
     try:
         data = await request.json()
+        logger.info("Received webhook request, note: ", data.get("note", "").strip().lower())
         pr_data = extract_pr_data(data)
     except ValueError as e:
         return
@@ -101,7 +102,8 @@ async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: 
     return False
 
 
-async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, build_id: str, retry_count: int, commit_url: str,
+async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, build_id: str, retry_count: int,
+                               commit_url: str,
                                maker_url: str):
     """处理构建重试逻辑"""
     try:
@@ -119,7 +121,6 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
 
         elif retry_count < MAX_RETRIES:
             # 获取失败日志
-            loop = asyncio.get_event_loop()
             job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
             log_url = maker.get_log_url(maker.get_result_root(job_id))
             log_content = await maker.get_build_log(log_url)
@@ -144,14 +145,16 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
             commit_url = f"{fork_url}/commit/{commit_sha}"
             maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
 
-        # 递归处理
+            # 递归处理
             await handle_build_retries(pr_data, new_spec, srcDir, new_build_id, retry_count + 1, commit_url, maker_url)
 
         else:
             # 达到最大重试次数
-            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES, commit_url=commit_url, maker_url=maker_url)
+            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES, commit_url=commit_url,
+                                                          maker_url=maker_url)
             git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
             logger.error(f"PR #{pr_data['pr_number']} 构建失败，已达最大重试次数")
+            analyze_error_and_create_issue(pr_data)
 
     except Exception as e:
         logger.error(f"处理重试时发生异常: {e}")
@@ -216,3 +219,33 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         traceback.print_exc()
         comment = settings.fix_error_comment.format(error=str(e))
         git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
+
+
+async def analyze_error_and_create_issue(pr_data: dict):
+    """分析错误并创建问题"""
+    # 分析错误日志
+    try:
+        # Get build log
+        job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
+        log_url = maker.get_log_url(maker.get_result_root(job_id))
+        log_content = await maker.get_build_log(log_url)
+
+        warning_patterns = [
+            r"Warning:.*",
+            r"skipped:.*",
+            r"warning:.*"
+            r"WARNING:.*",
+        ]
+        warnings = []
+        for pattern in warning_patterns:
+            matches = re.findall(pattern, log_content)
+            warnings.extend(matches)
+
+        chat = silicon_client.SiliconFlowChat(settings.silicon_token)
+        title, content = chat.analyze_missing_package(pr_data["repo_name"])
+        if title and content:
+            git_api.create_issue(pr_data["repo_url"], title, content)
+
+    except Exception as e:
+        logger.error(f"获取构建日志失败: {e}")
+        return
