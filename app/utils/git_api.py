@@ -35,6 +35,10 @@ class ForkServiceInterface(ABC):
     def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
         pass
 
+    @abstractmethod
+    def create_issue(self, owner, repo, title, content):
+        pass
+
 
 # 平台具体实现层
 class GiteeForkService(ForkServiceInterface):
@@ -165,6 +169,14 @@ class GiteeForkService(ForkServiceInterface):
                 logger.error(f"Unexpected error: {str(e)}")
             return None
 
+    def create_issue(self, owner, repo, title, content):
+        data = {
+            "repo": repo,
+            "title": title,
+            "body": content
+        }
+        response = self.client.post(f"/repos/{owner}/issues", data)
+
 
 class GitHubForkService(ForkServiceInterface):
     def __init__(self, token):
@@ -191,6 +203,9 @@ class GitHubForkService(ForkServiceInterface):
         pass
 
     def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        pass
+
+    def create_issue(self, owner, repo, title, content):
         pass
 
 
@@ -225,6 +240,9 @@ class GitCodeForkService(ForkServiceInterface):
         pass
 
     def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
+        pass
+
+    def create_issue(self, owner, repo, title, content):
         pass
 
 
@@ -332,6 +350,20 @@ def comment_on_pr(repo_url, pr_num, comment):
         )
     except Exception as e:
         print(f"提交失败: {str(e)}")
+
+
+def create_issue(repo_url, title, content):
+    platform, token, owner, repo = parse_repo_url(repo_url)
+    service = ForkServiceFactory.get_service(platform, token)
+    try:
+        service.create_issue(
+            owner=owner,
+            repo=repo,
+            title=title,
+            content=content,
+        )
+    except Exception as e:
+        print(f"创建失败: {str(e)}")
 
 
 async def get_spec_content(repo_url, pr_number, file_path):
