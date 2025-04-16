@@ -154,7 +154,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
                                                           maker_url=maker_url)
             git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
             logger.error(f"PR #{pr_data['pr_number']} 构建失败，已达最大重试次数")
-            analyze_error_and_create_issue(pr_data)
+            await analyze_error_and_create_issue(pr_data)
 
     except Exception as e:
         logger.error(f"处理重试时发生异常: {e}")
