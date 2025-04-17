@@ -251,23 +251,21 @@ def get_log_url(result_root: str) -> str:
     return f"https://eulermaker.compass-ci.openeuler.openatom.cn/api/{result_root}/dmesg"
 
 
-async def get_build_log(url: str) -> Optional[str]:
-    async with httpx.AsyncClient() as client:
-        try:
-            # 异步获取日志
-            response = await client.get(url, timeout=60)
-            response.raise_for_status()
+def get_build_log(url: str) -> Optional[str]:
+    try:
+        # 同步获取日志
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
 
-            # 处理内容（保持原有逻辑）
-            lines = response.text.splitlines()
-            return "\n".join(lines[-200:])
+        # 处理内容（保持原有逻辑）
+        lines = response.text.splitlines()
+        return "\n".join(lines[-200:])
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Log request failed: {e.response.status_code}")
-        except Exception as e:
-            logger.error(f"Log fetch error: {str(e)}")
-        return None
-
+    except requests.HTTPError as e:
+        logger.error(f"Log request failed: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Log fetch error: {str(e)}")
+    return None
 
 async def get_build_status(
         build_id: str,
@@ -283,38 +281,37 @@ async def get_build_status(
         }
     }
 
-    async with httpx.AsyncClient(timeout=60) as client:  # 统一客户端
-        for attempt in range(1, max_retries + 1):
-            try:
-                # 添加请求追踪ID
-                headers = get_request_headers() | {"X-Request-ID": uuid.uuid4().hex}
+    for attempt in range(1, max_retries + 1):
+        try:
+        # 添加请求追踪ID
+            headers = get_request_headers() | {"X-Request-ID": uuid.uuid4().hex}
 
-                response = await client.post(
-                    f"{BASE_DATA_API_URL}/search",
-                    headers=headers,
-                    json=query_body
-                )
-                response.raise_for_status()
+            response = requests.post(
+                f"{BASE_DATA_API_URL}/search",
+                headers=headers,
+                json=query_body
+            )
+            response.raise_for_status()
 
-                if data := response.json():
-                    if hits := data.get('hits', {}).get('hits'):
-                        return hits[0]['_source']
+            if data := response.json():
+                if hits := data.get('hits', {}).get('hits'):
+                    return hits[0]['_source']
 
                     # 添加缓存穿透保护
-                    if attempt > 3:
-                        logger.warning(f"Persistent empty response for {build_id}")
-                        return None
+                if attempt > 3:
+                    logger.warning(f"Persistent empty response for {build_id}")
+                    return None
 
                 # 动态退避策略
-                delay = base_delay * (attempt ** 1.5)  # 调整退避曲线
-                await asyncio.sleep(delay)
+            delay = base_delay * (attempt ** 1.5)  # 调整退避曲线
+            await asyncio.sleep(delay)
 
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
-                if e.response.status_code == 404:
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
+            if e.response.status_code == 404:
                     break  # 立即终止不存在的请求
-            except Exception as e:
-                logger.error(f"Unexpected error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
 
-        return None
+    return None
 

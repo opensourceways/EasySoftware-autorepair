@@ -4,7 +4,7 @@ import time
 import traceback
 
 from fastapi import APIRouter, Request, HTTPException, Header, status, BackgroundTasks
-from app.config import settings
+from app.config import settings, init_db_pool
 from app.utils import git_api, gitee_tool
 from app.utils.client import silicon_client
 from app.utils import euler_maker_api as maker
@@ -15,7 +15,7 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 MAX_RETRIES = 0
-
+db_pool = init_db_pool()
 
 def verify_signature(body: bytes, signature: str) -> bool:
     """Verify HMAC signature of webhook payload."""
@@ -82,9 +82,22 @@ async def handle_webhook(
         logger.error(f"数据解析失败: {e}")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "无效负载")
 
-    # 启动后台任务处理
-    background_tasks.add_task(process_initial_repair, pr_data, spec_content)
-    return {"status": "处理已启动"}
+    try:
+        logger.info(f"开始入库")
+        conn = db_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO pending_requests (repo_url,source_url,pr_number,repo_name,pr_url,spec_content) VALUES (%s,%s,%s,%s,%s,%s)",
+            (pr_data["repo_url"],pr_data["source_url"],pr_data["pr_number"],pr_data["repo_name"],pr_data["pr_url"],spec_content)
+        )
+        conn.commit()
+        return {"status": "处理已启动"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "数据库写入异常")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: int = 36000) -> bool:
@@ -98,7 +111,7 @@ async def wait_for_build_completion(build_id: str, interval: int = 30, timeout: 
                 return True
             elif build_status == 202:
                 return False
-        await asyncio.sleep(interval)
+            await asyncio.sleep(interval)
     return False
 
 
@@ -123,7 +136,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
             # 获取失败日志
             job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
             log_url = maker.get_log_url(maker.get_result_root(job_id))
-            log_content = await maker.get_build_log(log_url)
+            log_content = maker.get_build_log(log_url)
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)
@@ -172,7 +185,7 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         )
         job_id = maker.get_job_id(os_project, pr_data["repo_name"])
         log_url = maker.get_log_url(maker.get_result_root(job_id))
-        log_content = await maker.get_build_log(log_url)
+        log_content = maker.get_build_log(log_url)
 
         srcDir = gitee_tool.get_dir_json(pr_data["pr_url"], settings.gitee_token)
 
@@ -228,7 +241,7 @@ async def analyze_error_and_create_issue(pr_data: dict):
         # Get build log
         job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
         log_url = maker.get_log_url(maker.get_result_root(job_id))
-        log_content = await maker.get_build_log(log_url)
+        log_content = maker.get_build_log(log_url)
 
         warning_patterns = [
             r"Warning:.*",
