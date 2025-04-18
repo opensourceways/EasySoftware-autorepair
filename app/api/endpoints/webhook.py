@@ -1,21 +1,25 @@
+# 标准库
 import asyncio
 import re
 import time
-import traceback
+import hmac
+import hashlib
+import logging
 
+# 第三方库
 from fastapi import APIRouter, Request, HTTPException, Header, status, BackgroundTasks
+
+# 应用程序自定义模块
 from app.config import settings, init_db_pool
 from app.utils import git_api, gitee_tool
 from app.utils.client import silicon_client
 from app.utils import euler_maker_api as maker
-import hmac
-import hashlib
-import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 MAX_RETRIES = 0
 db_pool = init_db_pool()
+
 
 def verify_signature(body: bytes, signature: str) -> bool:
     """Verify HMAC signature of webhook payload."""
@@ -88,8 +92,16 @@ async def handle_webhook(
         conn = db_pool.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO pending_requests (repo_url,source_url,pr_number,repo_name,pr_url,spec_content) VALUES (%s,%s,%s,%s,%s,%s)",
-            (pr_data["repo_url"],pr_data["source_url"],pr_data["pr_number"],pr_data["repo_name"],pr_data["pr_url"],spec_content)
+            "INSERT INTO pending_requests (repo_url, source_url, pr_number, repo_name, pr_url, spec_content) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                pr_data["repo_url"],
+                pr_data["source_url"],
+                pr_data["pr_number"],
+                pr_data["repo_name"],
+                pr_data["pr_url"],
+                spec_content
+            )
         )
         conn.commit()
         return {"status": "处理已启动"}
@@ -157,7 +169,12 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
             )
             repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
             commit_url = f"{fork_url}/commit/{commit_sha}"
-            maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
+            maker_url = (
+                f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?"
+                f"osProject={settings.os_repair_project}&"
+                f"packageName={pr_data['repo_name']}&"
+                f"jobId={repair_job_id}"
+            )
 
             # 递归处理
             await handle_build_retries(pr_data, new_spec, srcDir, new_build_id, retry_count + 1, commit_url, maker_url)
@@ -228,7 +245,10 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
 
         repair_job_id = maker.get_job_id(settings.os_repair_project, pr_data["repo_name"])
         commit_url = f"{fork_url}/commit/{commit_sha}"
-        maker_url = f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?osProject={settings.os_repair_project}&packageName={pr_data['repo_name']}&jobId={repair_job_id}"
+        maker_url = (f"https://eulermaker.compass-ci.openeuler.openatom.cn/package/build-record?"
+                     f"osProject={settings.os_repair_project}&"
+                     f"packageName={pr_data['repo_name']}&"
+                     f"jobId={repair_job_id}")
 
         await handle_build_retries(pr_data, fixed_spec, srcDir, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:

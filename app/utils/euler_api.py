@@ -69,6 +69,7 @@ class OAuthClient:
 
         except (RequestException, json.JSONDecodeError) as e:
             self._handle_request_exception(e, "获取隐私协议版本")
+            return ""
 
     def authenticate(self, version: str) -> None:
         """进行用户认证并维护会话状态"""
@@ -166,6 +167,7 @@ class OAuthClient:
 
         except (RequestException, IndexError) as e:
             self._handle_request_exception(e, "获取授权码")
+            return ""
 
     def get_access_token(self, code: str) -> str:
         """使用授权码获取访问令牌"""
@@ -184,6 +186,7 @@ class OAuthClient:
 
         except RequestException as e:
             self._handle_request_exception(e, "获取访问令牌")
+            return ""
 
     def execute_flow(self) -> str:
         """执行完整的OAuth流程"""

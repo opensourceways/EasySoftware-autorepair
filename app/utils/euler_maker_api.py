@@ -1,12 +1,16 @@
+# 标准库
 import asyncio
 import logging
 import time
 import uuid
 
+# 第三方库
 import httpx
 import requests
 from typing import Any, Dict, List, Optional
 from requests.exceptions import RequestException
+
+# 应用程序自定义模块
 from . import euler_api
 
 # 常量定义
@@ -40,7 +44,7 @@ def _request_wrapper(
                 time.sleep(RETRY_DELAY * (attempt + 1))
             else:
                 logger.info(f"最终请求失败: {url}")
-                return None
+    return None
 
 
 def get_request_headers() -> Dict[str, str]:
@@ -267,6 +271,7 @@ def get_build_log(url: str) -> Optional[str]:
         logger.error(f"Log fetch error: {str(e)}")
     return None
 
+
 async def get_build_status(
         build_id: str,
         max_retries: int = 10,
@@ -283,7 +288,7 @@ async def get_build_status(
 
     for attempt in range(1, max_retries + 1):
         try:
-        # 添加请求追踪ID
+            # 添加请求追踪ID
             headers = get_request_headers() | {"X-Request-ID": uuid.uuid4().hex}
 
             response = requests.post(
@@ -309,9 +314,8 @@ async def get_build_status(
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
             if e.response.status_code == 404:
-                    break  # 立即终止不存在的请求
+                break  # 立即终止不存在的请求
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
 
     return None
-
