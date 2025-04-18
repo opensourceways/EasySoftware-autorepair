@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tarfile
 import requests
@@ -6,6 +7,7 @@ import tempfile
 from urllib.parse import urlparse, urlencode
 
 GITEE_API = "https://gitee.com/api/v5"
+logger = logging.getLogger(__name__)
 
 
 def parse_pr_url(pr_url):
@@ -116,15 +118,15 @@ def get_dir_json(pr_url, token=None):
         files = get_pr_files(owner, repo, pr_number, token)
 
         if not files:
-            print("该PR中没有新增的压缩文件")
+            logger.info("该PR中没有新增的压缩文件")
             return
 
-        print(f"找到{len(files)}个压缩文件:")
+        logger.info(f"找到{len(files)}个压缩文件:")
         for i, (filename, _) in enumerate(files, 1):
-            print(f"{i}. {filename}")
+            logger.info(f"{i}. {filename}")
 
         for filename, raw_url in files:
-            print(f"\n分析文件: {filename}")
+            logger.info(f"\n分析文件: {filename}")
             temp_file = None
 
             try:
@@ -134,14 +136,14 @@ def get_dir_json(pr_url, token=None):
                 dir_tree = build_directory_tree(structure)
                 json_output = generate_json_tree(dir_tree)
 
-                print("\nJSON格式目录结构:")
-                print((json.dumps(json_output, indent=2, ensure_ascii=False)))
+                logger.info("\nJSON格式目录结构:")
+                logger.info((json.dumps(json_output, indent=2, ensure_ascii=False)))
 
             except Exception as e:
-                print(f"分析失败: {str(e)}")
+                logger.info(f"分析失败: {str(e)}")
             finally:
                 if temp_file and os.path.exists(temp_file):
                     os.remove(temp_file)
 
     except Exception as e:
-        print(f"发生错误: {str(e)}")
+        logger.info(f"发生错误: {str(e)}")

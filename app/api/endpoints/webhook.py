@@ -60,7 +60,8 @@ async def handle_webhook(
 ):
     try:
         data = await request.json()
-        logger.info("Received webhook request, note: ", data.get("note", "").strip().lower())
+        comment = data.get("note", "").strip().lower()
+        logger.info(f"Received webhook request, note: {comment}")
         pr_data = extract_pr_data(data)
     except ValueError as e:
         return
@@ -229,7 +230,6 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         await handle_build_retries(pr_data, fixed_spec, srcDir, repair_build_id, 0, commit_url, maker_url)
     except Exception as e:
         logger.error(f"初始修复流程失败: {e}")
-        traceback.print_exc()
         comment = settings.fix_error_comment.format(error=str(e))
         git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
 
@@ -253,7 +253,7 @@ async def analyze_error_and_create_issue(pr_data: dict):
         for pattern in warning_patterns:
             matches = re.findall(pattern, log_content)
             warnings.extend(matches)
-
+        logger.info(f"the build warning info : {warnings}")
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
         title, content = chat.analyze_missing_package(pr_data["repo_name"])
         if title and content:

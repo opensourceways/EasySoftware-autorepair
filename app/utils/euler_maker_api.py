@@ -35,11 +35,11 @@ def _request_wrapper(
             response.raise_for_status()
             return response
         except RequestException as e:
-            print(f"请求失败 (尝试 {attempt + 1}/{retries}): {e}")
+            logger.info(f"请求失败 (尝试 {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(RETRY_DELAY * (attempt + 1))
             else:
-                print(f"最终请求失败: {url}")
+                logger.info(f"最终请求失败: {url}")
                 return None
 
 

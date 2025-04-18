@@ -79,7 +79,7 @@ class GiteeForkService(ForkServiceInterface):
 
         # 分支已存在时跳过创建
         if check_response.status_code == 200:
-            print(f"Branch {branch_name} already exists in {self.current_user}/{repo}.")
+            logger.info(f"Branch {branch_name} already exists in {self.current_user}/{repo}.")
             return
         data = {
             "access_token": settings.gitee_token,
@@ -89,7 +89,7 @@ class GiteeForkService(ForkServiceInterface):
         response = self.client.post(f"/repos/{self.current_user}/{repo}/branches", data=data)
         if response.status_code != 201:
             raise Exception(f"Failed to create branch {branch_name}: {response.json()}")
-        print(f"Branch {branch_name} created successfully in {self.current_user}/{repo}.")
+        logger.info(f"Branch {branch_name} created successfully in {self.current_user}/{repo}.")
 
     def create_fork(self, owner, repo, branch):
         # 检查当前用户是否已有仓库
@@ -98,7 +98,7 @@ class GiteeForkService(ForkServiceInterface):
             response = self.client.post(f"/repos/{owner}/{repo}/forks")
             if response.status_code != 201:
                 raise Exception(f"Gitee fork failed: {response.json()}")
-            print(f"Forked repository {self.current_user}/{repo} created.")
+            logger.info(f"Forked repository {self.current_user}/{repo} created.")
 
         # 创建新分支
         self._create_branch(repo, branch)
@@ -136,7 +136,7 @@ class GiteeForkService(ForkServiceInterface):
             response = self.client.post(f"/repos/{owner}/{repo}/pulls/{pr_num}/comments", data)
             response.raise_for_status()  # 检查是否成功
         except requests.exceptions.RequestException as e:
-            print("评论 PR 失败:", e)
+            logger.info("评论 PR 失败:", e)
 
     async def get_spec_content(self, owner, repo, pr_number, file_path, token=None):
         async with httpx.AsyncClient() as client:
@@ -332,10 +332,10 @@ def update_spec_file(service, owner, repo, file_content, branch):
             file_path=file_path,
             branch=branch,
         )
-        print(f"文件已提交至: {file_path}")
+        logger.info(f"文件已提交至: {file_path}")
         return clone_url, sha, branch
     except Exception as e:
-        print(f"提交失败: {str(e)}")
+        logger.info(f"提交失败: {str(e)}")
 
 
 def comment_on_pr(repo_url, pr_num, comment):
@@ -349,7 +349,7 @@ def comment_on_pr(repo_url, pr_num, comment):
             comment=comment
         )
     except Exception as e:
-        print(f"提交失败: {str(e)}")
+        logger.info(f"提交失败: {str(e)}")
 
 
 def create_issue(repo_url, title, content):
@@ -363,7 +363,7 @@ def create_issue(repo_url, title, content):
             content=content,
         )
     except Exception as e:
-        print(f"创建失败: {str(e)}")
+        logger.info(f"创建失败: {str(e)}")
 
 
 async def get_spec_content(repo_url, pr_number, file_path):

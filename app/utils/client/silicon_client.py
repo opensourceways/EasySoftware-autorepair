@@ -7,6 +7,7 @@ from app.config import settings
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 class SiliconFlowChat:
@@ -90,5 +91,5 @@ class SiliconFlowChat:
             title = match.group(1).strip()  # 提取标题
             content = match.group(2).strip()  # 提取内容
         else:
-            print("未找到匹配内容")
+            logger.info("未找到匹配内容")
         return str(title), str(content)
