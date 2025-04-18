@@ -62,24 +62,17 @@ class SiliconFlowChat:
                                             logContent=logContent,
                                             srcDir=srcDir
                                         )}])
+        new_spec = ""
+        reason = ""
         if "```spec" in response:
             new_spec = response.split("```spec")[1].split("```")[0].strip()
-            return new_spec
-        else:
-            return response
+        if "```reason" in response:
+            reason = response.split("```reason")[1].split("```")[0].strip()
+        if new_spec and reason:
+            return new_spec, reason
+        return response
 
-    def analyze_missing_package(self, log_content):
-        warning_patterns = [
-            r"Warning:.*",
-            r"skipped:.*",
-            r"warning:.*"
-            r"WARNING:.*",
-        ]
-        warnings = []
-        for pattern in warning_patterns:
-            matches = re.findall(pattern, log_content)
-            warnings.extend(matches)
-
+    def analyze_missing_package(self, warnings):
         response = self.chat(messages=[{"role": "system", "content": settings.analyze_system_prompt},
                                        {"role": "user", "content": "".join(warnings)}])
         pattern = re.compile(r"标题：(\[.*?\].*?)\s*内容：\s*(.*)", re.DOTALL)
