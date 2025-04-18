@@ -60,7 +60,8 @@ async def handle_webhook(
 ):
     try:
         data = await request.json()
-        logger.info("Received webhook request, note: ", data.get("note", "").strip().lower())
+        comment = data.get("note", "").strip().lower()
+        logger.info(f"Received webhook request, note: {comment}")
         pr_data = extract_pr_data(data)
     except ValueError as e:
         return
@@ -240,7 +241,7 @@ async def analyze_error_and_create_issue(pr_data: dict):
         for pattern in warning_patterns:
             matches = re.findall(pattern, log_content)
             warnings.extend(matches)
-
+        logger.info(f"the build warning info : {warnings}")
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
         title, content = chat.analyze_missing_package(pr_data["repo_name"])
         if title and content:
