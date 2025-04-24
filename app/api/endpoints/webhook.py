@@ -1,5 +1,6 @@
 # 标准库
 import asyncio
+import base64
 import re
 import time
 import hmac
@@ -56,12 +57,41 @@ def extract_pr_data(data: dict) -> dict:
     }
 
 
+def compute_signature(timestamp: str):
+    """
+    计算Gitee Webhook签名
+    参数格式保持字符串类型以兼容HTTP Header的文本格式
+    """
+    # 构造签名字符串
+    string_to_sign = f"{timestamp}\n{settings.webhook_secret}"
+    # 生成HMAC-SHA256签名
+    secret_enc = settings.webhook_secret.encode('utf-8')
+    string_to_sign_enc = string_to_sign.encode('utf-8')
+
+    hmac_code = hmac.new(secret_enc, string_to_sign_enc, hashlib.sha256).digest()
+    # Base64编码并进行URL转义
+    return base64.b64encode(hmac_code).decode('utf-8')
+
+
 @router.post("/webhooks/spec", status_code=status.HTTP_202_ACCEPTED)
 async def handle_webhook(
         request: Request,
-        x_signature: str = Header(None),
-        background_tasks: BackgroundTasks = None
+        x_gitee_token: str = Header(None),  # Gitee的签名
+        x_gitee_timestamp: str = Header(None)  # Gitee的时间戳
 ):
+    if not x_gitee_token or not x_gitee_timestamp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required headers"
+        )
+    server_signature = compute_signature(x_gitee_timestamp)
+    # 安全比较签名（防止时序攻击）
+    if not hmac.compare_digest(server_signature, x_gitee_token):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid signature"
+        )
+
     try:
         data = await request.json()
         comment = data.get("note", "").strip().lower()
