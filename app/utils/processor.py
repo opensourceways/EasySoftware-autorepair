@@ -10,12 +10,11 @@
 # PURPOSE.
 # See the Mulan PSL v2 for more details.
 # ******************************************************************************/
-
-import time
-from app.config import settings, init_db_pool
-from app.api.endpoints.webhook import process_initial_repair
 import logging
 import asyncio
+
+from app.config import settings, init_db_pool
+from app.api.endpoints.webhook import process_initial_repair
 
 
 REPAIR_STATUS_COMPLETED = "completed"
@@ -24,6 +23,8 @@ REPAIR_STATUS_PROCESSING = "processing"
 REPAIR_STATUS_PENDING = "pending"
 
 logger = logging.getLogger(__name__)
+
+
 class RequestProcessor:
     def __init__(self):
         """

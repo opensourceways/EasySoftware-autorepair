@@ -3,6 +3,7 @@ import os
 import yaml
 from mysql.connector import pooling
 
+
 class Settings:
     def __init__(self):
         config_path_env = os.getenv("CONFIG_PATH")
@@ -44,7 +45,7 @@ class Settings:
             self.password: str = config.get("PASSWORD")
             self.database: str = config.get("DATABASE")
             self.pool_size: int = config.get("POOL_SIZE")
-        #os.remove(config_path_env)
+        # os.remove(config_path_env)
 
 
 settings = Settings()
@@ -57,9 +58,11 @@ db_config = {
     "database": settings.database,
     'charset': 'utf8mb4'
 }
+
+
 def init_db_pool():
     return pooling.MySQLConnectionPool(
         pool_name="request_pool",
         pool_size=settings.pool_size,
         **db_config
-    ) 
+    )

@@ -1,18 +1,21 @@
+# 标准库
 import os
 import shutil
 import stat
 import subprocess
+import logging
 from abc import ABC, abstractmethod
 from base64 import b64encode
 from urllib.parse import urlparse
 
+# 第三方库
 import httpx
-
-from app.config import settings
 import requests
-import logging
 
+# 应用程序自定义模块
+from app.config import settings
 from app.utils.client import api_client
+
 
 logger = logging.getLogger("git_api")
 
@@ -336,6 +339,7 @@ def update_spec_file(service, owner, repo, file_content, branch):
         return clone_url, sha, branch
     except Exception as e:
         logger.info(f"提交失败: {str(e)}")
+        return "", "", ""
 
 
 def comment_on_pr(repo_url, pr_num, comment):
@@ -405,7 +409,7 @@ def check_and_push(repo_url, new_content, pr_num):
                 ["git", "rev-parse", "HEAD"], cwd=temp_dir, text=True).strip()
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, onerror=force_remove_readonly)
-            return f'{repo_url}.git', commit_sha, branch
+        return f'{repo_url}.git', commit_sha, branch
 
 
 def force_remove_readonly(func, path, _):

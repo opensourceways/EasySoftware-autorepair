@@ -1,10 +1,14 @@
+# 标准库
 import json
 import logging
 import os
 import tarfile
-import requests
 import tempfile
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse
+
+# 第三方库
+import requests
+
 
 GITEE_API = "https://gitee.com/api/v5"
 logger = logging.getLogger(__name__)
@@ -69,11 +73,13 @@ def download_gitee_file(raw_url, token=None):
     _, ext = os.path.splitext(raw_url)
     fd, path = tempfile.mkstemp(suffix=ext)
 
-    with os.fdopen(fd, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+    finally:
+        os.remove(path)
     return path
 
 
