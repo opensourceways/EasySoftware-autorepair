@@ -141,7 +141,7 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
 
             # 分析新日志生成修正
             chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-            new_spec = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content, srcDir)
+            new_spec, fail_reason = chat.analyze_build_log(pr_data["repo_name"], current_spec, log_content, srcDir)
 
             # 提交新修正
             fork_url, commit_sha, branch = git_api.check_and_push(
@@ -192,7 +192,10 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
 
         # Analyze build log
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        fixed_spec = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content, srcDir)
+        fixed_spec, fail_reason = chat.analyze_build_log(pr_data["repo_name"], original_spec, log_content, srcDir)
+
+        # Comment Fail Reason In Pr
+        git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], fail_reason)
 
         # Update spec in fork
         fork_url, commit_sha, branch = git_api.check_and_push(
@@ -248,6 +251,8 @@ async def analyze_error_and_create_issue(pr_data: dict):
             r"skipped:.*",
             r"warning:.*"
             r"WARNING:.*",
+            r"No matching package to install:.*",
+            r".*is not installed.*"
         ]
         warnings = []
         for pattern in warning_patterns:
@@ -255,7 +260,7 @@ async def analyze_error_and_create_issue(pr_data: dict):
             warnings.extend(matches)
         logger.info(f"the build warning info : {warnings}")
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
-        title, content = chat.analyze_missing_package(pr_data["repo_name"])
+        title, content = chat.analyze_missing_package(warnings)
         if title and content:
             git_api.create_issue(pr_data["repo_url"], title, content)
 
