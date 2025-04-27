@@ -31,6 +31,7 @@ class Settings:
             self.system_prompt: str = config.get("SYSTEM_PROMPT")
             self.user_prompt: str = config.get("USER_PROMPT")
             self.analyze_system_prompt: str = config.get("ANALYZE_SYSTEM_PROMPT")
+            self.missing_package_comment: str = config.get("MISSING_PACKAGE_COMMENT")
             self.ai_model: str = config.get("AI_MODEL")
             self.model_max_tokens: int = config.get("MODEL_MAX_TOKENS")
             self.model_temperature: float = config.get("MODEL_TEMPERATURE")
