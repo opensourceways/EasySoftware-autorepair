@@ -45,6 +45,12 @@ def extract_pr_data(data: dict) -> dict:
     if note not in [cmd.strip().lower() for cmd in settings.accept_cmds]:
         raise ValueError("Unsupported command")
 
+    # Check for ci_failed label
+    labels = data.get("pull_request", {}).get("labels", [])
+    logger.info(f"labels is {labels}")
+    if not any(label.get("name") == "ci_failed" for label in labels):
+        raise ValueError("PR does not have ci_failed label")
+
     pull_request = data.get("pull_request", {})
     project = data.get("project", {})
 
@@ -162,6 +168,11 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
                                commit_url: str,
                                maker_url: str):
     """处理构建重试逻辑"""
+    old_version, new_version = git_api.get_upgrade_versions(
+        pr_data["repo_url"],
+        pr_data["pr_number"],
+        f'{pr_data["repo_name"]}.spec'
+    )
     try:
         build_status = await wait_for_build_completion(build_id)
         logger.info(f'the build result is {build_status}')
@@ -211,11 +222,20 @@ async def handle_build_retries(pr_data: dict, current_spec: str, srcDir: str, bu
 
         else:
             # 达到最大重试次数
-            comment = settings.fix_failure_comment.format(max_retries=MAX_RETRIES, commit_url=commit_url,
-                                                          maker_url=maker_url)
+            logger.info(f"old_version is {old_version}, new_version is {new_version}")
+            comment = settings.fix_failure_comment.format(
+                package=pr_data["repo_name"],
+                old_version=old_version,
+                new_version=new_version,
+                commit_url=commit_url,
+                maker_url=maker_url,
+            )
+            issue_url = await analyze_error_and_create_issue(pr_data, old_version, new_version)
+            if issue_url:
+                comment += (f"\n升级后，发现缺少依赖包情况，openEuler-AutoRepair已经提出Issue，请留意处理进度.\n"
+                            f"Issue链接：{issue_url}。")
             git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
             logger.error(f"PR #{pr_data['pr_number']} 构建失败，已达最大重试次数")
-            await analyze_error_and_create_issue(pr_data)
 
     except Exception as e:
         logger.error(f"处理重试时发生异常: {e}")
@@ -287,8 +307,8 @@ async def process_initial_repair(pr_data: dict, original_spec: str):
         git_api.comment_on_pr(pr_data["repo_url"], pr_data["pr_number"], comment)
 
 
-async def analyze_error_and_create_issue(pr_data: dict):
-    """分析错误并创建问题"""
+async def analyze_error_and_create_issue(pr_data: dict, old_version, new_version):
+    """分析错误并创建Issue"""
     # 分析错误日志
     try:
         # Get build log
@@ -312,8 +332,12 @@ async def analyze_error_and_create_issue(pr_data: dict):
         chat = silicon_client.SiliconFlowChat(settings.silicon_token)
         title, content = chat.analyze_missing_package(warnings)
         if title and content:
-            git_api.create_issue(pr_data["repo_url"], title, content)
-
+            issue_url = git_api.create_issue(pr_data["repo_url"], title, settings.missing_package_comment.format(
+                old_version=old_version,
+                new_version=new_version,
+                missing_packages=content))
+            return issue_url
+        return ""
     except Exception as e:
         logger.error(f"获取构建日志失败: {e}")
-        return
+        return ""

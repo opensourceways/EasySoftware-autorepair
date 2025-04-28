@@ -73,13 +73,10 @@ def download_gitee_file(raw_url, token=None):
     _, ext = os.path.splitext(raw_url)
     fd, path = tempfile.mkstemp(suffix=ext)
 
-    try:
-        with os.fdopen(fd, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-    finally:
-        os.remove(path)
+    with os.fdopen(fd, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
     return path
 
 

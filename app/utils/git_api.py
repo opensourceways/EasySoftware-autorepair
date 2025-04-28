@@ -1,5 +1,6 @@
 # 标准库
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -40,6 +41,10 @@ class ForkServiceInterface(ABC):
 
     @abstractmethod
     def create_issue(self, owner, repo, title, content):
+        pass
+
+    @abstractmethod
+    def get_upgrade_versions(self, owner, repo, pr_number, file_path, token=None):
         pass
 
 
@@ -172,6 +177,41 @@ class GiteeForkService(ForkServiceInterface):
                 logger.error(f"Unexpected error: {str(e)}")
             return None
 
+    def get_upgrade_versions(self, owner, repo, pr_number, file_path, token=None) -> tuple:
+        try:
+            headers = {
+                "Authorization": f"token {token}"
+            }
+            # 异步获取PR文件列表
+            files_resp = self.client.get(f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
+            files_resp.raise_for_status()
+            files = files_resp.json()
+
+            # 查找目标文件
+            target_file = next((f for f in files if f["filename"] == file_path), None)
+            if not target_file:
+                logger.warning(f"File {file_path} not found in PR #{pr_number}")
+                return "", ""
+
+            diff = target_file['patch']['diff']
+            version_pattern = re.compile(r'([+-])\s*Version:\s*([\w.]+)')
+            matches = version_pattern.findall(diff)
+
+            old_version = None
+            new_version = None
+            for sign, version in matches:
+                if sign == '-':
+                    old_version = version
+                elif sign == '+':
+                    new_version = version
+            return old_version, new_version
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Gitee API error: {e.response.status_code} {e.response.text}")
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+        return "", ""
+
     def create_issue(self, owner, repo, title, content):
         data = {
             "repo": repo,
@@ -179,6 +219,7 @@ class GiteeForkService(ForkServiceInterface):
             "body": content
         }
         response = self.client.post(f"/repos/{owner}/issues", data)
+        return response.json().get('html_url', "")
 
 
 class GitHubForkService(ForkServiceInterface):
@@ -209,6 +250,9 @@ class GitHubForkService(ForkServiceInterface):
         pass
 
     def create_issue(self, owner, repo, title, content):
+        pass
+
+    def get_upgrade_versions(self, owner, repo, pr_number, file_path, token=None):
         pass
 
 
@@ -246,6 +290,9 @@ class GitCodeForkService(ForkServiceInterface):
         pass
 
     def create_issue(self, owner, repo, title, content):
+        pass
+
+    def get_upgrade_versions(self, owner, repo, pr_number, file_path, token=None):
         pass
 
 
@@ -360,20 +407,28 @@ def create_issue(repo_url, title, content):
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
     try:
-        service.create_issue(
+        issue_url = service.create_issue(
             owner=owner,
             repo=repo,
             title=title,
             content=content,
         )
+        return issue_url
     except Exception as e:
         logger.info(f"创建失败: {str(e)}")
+        return ""
 
 
 async def get_spec_content(repo_url, pr_number, file_path):
     platform, token, owner, repo = parse_repo_url(repo_url)
     service = ForkServiceFactory.get_service(platform, token)
     return await service.get_spec_content(owner, repo, pr_number, file_path, token)
+
+
+def get_upgrade_versions(repo_url, pr_number, file_path):
+    platform, token, owner, repo = parse_repo_url(repo_url)
+    service = ForkServiceFactory.get_service(platform, token)
+    return service.get_upgrade_versions(owner, repo, pr_number, file_path, token)
 
 
 def check_and_push(repo_url, new_content, pr_num):
