@@ -4,6 +4,7 @@ import logging
 import os
 import tarfile
 import tempfile
+import zipfile
 from urllib.parse import urlparse
 
 # 第三方库
@@ -33,7 +34,8 @@ def get_pr_files(owner, repo, pr_number, token=None):
     valid_files = []
     for f in response.json():
         # 只处理新增和修改的压缩文件
-        if f.get('status') in ['added'] and f.get('filename', '').endswith(('.tar.gz', '.gem')):
+        if f.get('status') in ['added'] and f.get('filename', '').endswith(
+                ('.tar.gz', '.gem', '.tgz', 'tar.bz2', 'tar.xz', 'tar.zst', '.zip')):
             valid_files.append((
                 f['filename'],
                 f['raw_url']
@@ -47,7 +49,11 @@ def analyze_compressed_file(file_path):
     def get_sorted_paths(members):
         return sorted([m.name for m in members if m.name])
 
-    if file_path.endswith('.gem'):
+    # 新增zip文件处理分支
+    if file_path.endswith('.zip'):
+        with zipfile.ZipFile(file_path, 'r') as zipf:
+            return sorted(zipf.namelist())
+    elif file_path.endswith('.gem'):
         with tarfile.open(file_path, 'r:*') as gem:
             data_tar = next((m for m in gem if m.name == 'data.tar.gz'), None)
             if not data_tar:
@@ -56,6 +62,21 @@ def analyze_compressed_file(file_path):
             data = gem.extractfile(data_tar)
             with tarfile.open(fileobj=data, mode='r:*') as inner_tar:
                 return get_sorted_paths(inner_tar.getmembers())
+    elif file_path.endswith('.tar.zst'):
+        try:
+            import zstandard as zstd
+        except ImportError:
+            raise ImportError("请先安装zstandard库: pip install zstandard")
+
+        dctx = zstd.ZstdDecompressor()
+        with open(file_path, 'rb') as fh:
+            with dctx.stream_reader(fh) as reader:
+                with tarfile.open(fileobj=reader, mode='r|') as tar:
+                    return get_sorted_paths(tar.getmembers())
+    # 修改为通用tar文件处理（自动识别压缩格式）
+    else:
+        with tarfile.open(file_path, 'r:*') as tar:
+            return get_sorted_paths(tar.getmembers())
 
     with tarfile.open(file_path, 'r:*') as tar:
         return get_sorted_paths(tar.getmembers())
